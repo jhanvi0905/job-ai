@@ -95,15 +95,31 @@ def dedupe_and_filter(
     single run take 20+ minutes on network I/O alone. Progressive
     intelligence (PRD §2.3) applies to every expensive operation, not just AI
     calls — Notion API round-trips are exactly this kind of expensive step.
+
+    Also tracks fingerprints already handled WITHIN this run (not just
+    Notion's state as of the start of the run). Aggregator sources like
+    Himalayas can return the same underlying job from more than one
+    configured query (e.g. a globally-open role matches both an India-
+    specific and a worldwide search) — without this, each repeat looked
+    "new" (Notion didn't have it yet either, since nothing had been written
+    yet) and got written as a separate duplicate Notion page, and
+    classified by AI more than once. Real bug, found by inspecting actual
+    Notion output, not by inspection of the code alone.
     """
     survivors: list[tuple[NormalizedJob, dict | None]] = []
+    seen_fingerprints: set[str] = set()
     for job in jobs:
+        if job.job_fingerprint in seen_fingerprints:
+            summary.duplicates += 1
+            continue
+
         result = apply_filters(job, career_rules, roles_config)
         if not result.passed:
             summary.stale_or_filtered += 1
             logger.debug("filtered out %s @ %s: %s", job.title, job.company_name, result.reasons)
             continue
 
+        seen_fingerprints.add(job.job_fingerprint)
         try:
             existing = notion.find_by_fingerprint(job.job_fingerprint)
         except Exception as exc:  # noqa: BLE001 — one job's Notion hiccup must not kill the batch

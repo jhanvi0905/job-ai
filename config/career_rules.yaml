@@ -8,12 +8,13 @@ location:
   # change candidate_country — nothing else needs to change.
   candidate_country: "India"
 
+  # Remote only, for now (2026-09-22 correction) — India-remote or open-to-
+  # anywhere-globally, not on-site/hybrid even when physically in India.
+  # filters.py's On-site/Hybrid eligibility logic still exists and still
+  # works correctly (verified) — re-add "Hybrid"/"On-site" here later if
+  # that preference changes; no code change needed either way.
   allowed_workplace_types:
     - Remote
-    # On-site/Hybrid jobs are allowed ONLY when the job is physically located
-    # in candidate_country (see filters.py) — e.g. a Bangalore-based role.
-    - Hybrid
-    - On-site
 
   # Signals that mean "open globally / explicitly open to candidate_country" —
   # presence of any of these clears a restrictive/named-region hit below.

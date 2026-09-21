@@ -40,17 +40,27 @@ def test_stale_job_is_filtered():
     assert any("stale" in r for r in result.reasons)
 
 
-def test_onsite_job_outside_india_is_filtered():
-    job = make_job(workplace_type="On-site", location="San Francisco")
-    result = apply_filters(job, CAREER_RULES, ROLES)
-    assert not result.passed
-    assert any("not located in India" in r for r in result.reasons)
-
-
-def test_onsite_job_in_india_passes_location_check():
+def test_onsite_job_is_excluded_remote_only_policy():
+    # 2026-09-22 correction: Remote only for now, even for on-site-in-India —
+    # allowed_workplace_types no longer includes On-site/Hybrid at all.
     job = make_job(workplace_type="On-site", location="Bangalore, India")
     result = apply_filters(job, CAREER_RULES, ROLES)
-    assert result.passed
+    assert not result.passed
+    assert any("not in allowed list" in r for r in result.reasons)
+
+
+def test_location_eligible_onsite_logic_still_correct_if_re_enabled():
+    # The On-site/Hybrid eligibility logic itself is dormant, not deleted —
+    # re-adding "On-site" to career_rules.yaml should just work. Verified
+    # directly here so that isn't silently untested while unused.
+    from src.jobs.filters import _location_eligible
+
+    loc_cfg = CAREER_RULES["location"]
+    in_india = make_job(workplace_type="On-site", location="Bangalore, India")
+    outside_india = make_job(workplace_type="On-site", location="San Francisco")
+    assert _location_eligible(in_india, loc_cfg) == (True, None)
+    eligible, reason = _location_eligible(outside_india, loc_cfg)
+    assert not eligible and "not located in India" in reason
 
 
 def test_remote_job_restricted_to_us_is_filtered():
@@ -75,13 +85,14 @@ def test_remote_job_explicitly_open_to_india_passes_despite_restrictive_language
 
 
 def test_remote_job_with_structured_country_from_ashby_is_respected():
-    # Ashby-sourced jobs carry a structured location_country — On-site/Hybrid
-    # eligibility should key off that instead of guessing from free text.
-    job = make_job(workplace_type="On-site", location="Bengaluru", location_country="India")
+    # Ashby-sourced Remote jobs carry a structured location_country — that
+    # should be trusted over text-guessing (this is what caught OpenAI's
+    # "US - Remote" postings that plain text-matching missed).
+    job = make_job(workplace_type="Remote", location="India - Remote", location_country="India")
     result = apply_filters(job, CAREER_RULES, ROLES)
     assert result.passed
 
-    job2 = make_job(workplace_type="On-site", location="New York", location_country="United States")
+    job2 = make_job(workplace_type="Remote", location="US - Remote", location_country="United States")
     result2 = apply_filters(job2, CAREER_RULES, ROLES)
     assert not result2.passed
 

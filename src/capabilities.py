@@ -15,21 +15,13 @@ from datetime import date
 from src.achievements.retrieval import retrieve_achievements
 from src.ai.classifier import classify_job
 from src.ai.matcher import analyse_match
+from src.ai.role_labels import ROLE_FAMILY_LABELS
 from src.integrations.notion import NotionClient
 from src.jobs.refetch import refetch_job
 from src.jobs.schemas import JobMatch
 from src.telemetry.logging import RunSummary
 from src.workflows.process_job import run as _run_discovery
 
-# Must match the Notion "Role Family" select options exactly (see the schema
-# diff applied to the live Job Pipeline database) — not derived from
-# roles.yaml's free-text family names, which don't share that exact format.
-_ROLE_FAMILY_LABELS = {
-    "RF01": "RF01 - Senior/Lead AI Engineer",
-    "RF02": "RF02 - Senior ML/Applied AI Engineer",
-    "RF03": "RF03 - Senior Data/ML Systems Engineer",
-    "RF04": "RF04 - Lead/Early AI Engineer (Startup)",
-}
 _RECOMMENDED_ACTION_TO_STATUS = {"review": "Shortlisted", "watch": "Watch", "reject": "Rejected"}
 
 
@@ -59,7 +51,7 @@ def analyse_job(job_fingerprint: str) -> JobMatch:
     notion.update_job_page(
         page["notion_page_id"],
         {
-            "Role Family": _ROLE_FAMILY_LABELS.get(classification.role_family),
+            "Role Family": ROLE_FAMILY_LABELS.get(classification.role_family),
             "Seniority": classification.seniority,
             "Fit Band": match.fit_band.capitalize(),
             "Priority": match.priority,

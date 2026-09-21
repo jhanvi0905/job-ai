@@ -1,25 +1,37 @@
-"""Phase 1 pipeline: fetch -> normalize -> dedupe -> deterministic filter -> Notion.
+"""Pipeline: fetch -> normalize -> dedupe -> deterministic filter -> cheap AI
+triage -> Notion.
 
-No AI calls in this module by design (PRD Phase 1). Stage 1/2/3 (AI triage,
-achievement retrieval, deep match) plug in later at the single seam marked
-below, once Gate 1 (model verification) has passed — see scripts/verify_models.py.
+Stage 0 (everything through dedupe_and_filter) is zero-AI-call and safe to
+run as often as you like. Stage 1 (classify_survivors) is the one AI-calling
+step in the automatic batch flow — one cheap classification call per Stage-0
+survivor, never the full raw fetch, which is what keeps this affordable
+(PRD §15/§19: progressive intelligence, narrow before reasoning). It exists
+because Stage 0's keyword-assist alone lets through generic "Software
+Engineer" postings that share an AI company's boilerplate vocabulary without
+being AI/ML roles — something only role-taxonomy-aware judgment can catch.
+Stage 2/3 (achievement retrieval + deep match) stay on-demand only, via
+capabilities.analyse_job() — see that module for why full evidence/gap
+writing per-job stays a deliberate action, not automatic batch behavior.
 """
 from __future__ import annotations
 
 import logging
 from datetime import date, datetime, timezone
 
+from src.ai.classifier import classify_job
+from src.ai.role_labels import ROLE_FAMILY_LABELS
 from src.config import load_career_rules, load_roles, load_sources
 from src.integrations.notion import NotionClient
 from src.jobs.filters import apply_filters
 from src.jobs.normalize import normalize_job
-from src.jobs.schemas import NormalizedJob
+from src.jobs.schemas import JobClassification, NormalizedJob
 from src.sources.ashby import AshbySource
 from src.sources.base import JobSource
 from src.sources.greenhouse import GreenhouseSource
 from src.sources.lever import LeverSource
 from src.sources.smartrecruiters import SmartRecruitersSource
 from src.telemetry.logging import RunSummary
+from src.telemetry.usage import estimate_run_cost
 
 logger = logging.getLogger(__name__)
 
@@ -108,11 +120,49 @@ def _existing_jd_hash(page: dict) -> str | None:
         return None
 
 
+def classify_survivors(
+    survivors: list[tuple[NormalizedJob, dict | None]], summary: RunSummary
+) -> list[tuple[NormalizedJob, dict | None, JobClassification]]:
+    """Stage 1: one cheap AI call per Stage-0 survivor — judges actual role
+    fit (including seniority/years) against the role taxonomy, not just
+    keyword presence. A classification failure fails OPEN (job still passes
+    through, unclassified) rather than silently dropping a job a human never
+    gets to see because of an API hiccup — infra failures aren't evidence of
+    irrelevance."""
+    results: list[tuple[NormalizedJob, dict | None, JobClassification]] = []
+    for job, existing in survivors:
+        try:
+            classification = classify_job(job)
+            summary.classified += 1
+        except Exception as exc:  # noqa: BLE001
+            msg = f"classification failed for {job.source}:{job.external_job_id}: {exc}"
+            logger.error(msg)
+            summary.ai_errors.append(msg)
+            results.append((job, existing, None))
+            continue
+
+        if classification.hard_blocker or not classification.relevant:
+            logger.debug(
+                "excluded by Stage 1: %s @ %s (relevant=%s, hard_blocker=%s: %s)",
+                job.title,
+                job.company_name,
+                classification.relevant,
+                classification.hard_blocker,
+                classification.hard_blocker_reason,
+            )
+            continue
+
+        results.append((job, existing, classification))
+    return results
+
+
 def write_to_notion(
-    survivors: list[tuple[NormalizedJob, dict | None]], notion: NotionClient, summary: RunSummary
+    survivors: list[tuple[NormalizedJob, dict | None, JobClassification | None]],
+    notion: NotionClient,
+    summary: RunSummary,
 ) -> None:
     today = date.today().isoformat()
-    for job, existing in survivors:
+    for job, existing, classification in survivors:
         properties = {
             "Opportunity": f"{job.title} — {job.company_name}",
             "Company": job.company_name,
@@ -130,6 +180,9 @@ def write_to_notion(
             "Last Checked": today,
             "Date Posted": job.posted_at.date().isoformat() if job.posted_at else None,
         }
+        if classification is not None:
+            properties["Role Family"] = ROLE_FAMILY_LABELS.get(classification.role_family)
+            properties["Seniority"] = classification.seniority
         try:
             if existing is not None:
                 notion.update_job_page(existing["id"], properties)
@@ -143,6 +196,7 @@ def write_to_notion(
 
 
 def run() -> RunSummary:
+    run_started_at = datetime.now(timezone.utc)
     summary = RunSummary()
     career_rules = load_career_rules()
     roles_config = load_roles()
@@ -150,22 +204,15 @@ def run() -> RunSummary:
 
     sources = build_sources()
     jobs = fetch_all(sources, summary)
-    survivors = dedupe_and_filter(jobs, notion, career_rules, roles_config, summary)
+    stage0_survivors = dedupe_and_filter(jobs, notion, career_rules, roles_config, summary)
+    stage1_survivors = classify_survivors(stage0_survivors, summary)
 
-    # --- Stage 1/2/3 seam -------------------------------------------------
-    # Phase 1 (current): write Stage-0 survivors straight to Notion as
-    # "Discovered" for manual review — proves acquisition + Notion integration
-    # end to end before any AI spend.
-    #
-    # Phase 2+ (next): replace the line below with
-    #   classified = [classify(job) for job in survivors if relevant]
-    #   shortlisted = [j for j in classified if j.relevant and not j.hard_blocker]
-    #   matches = [analyse_match(job, retrieve_achievements(job)) for job in shortlisted]
-    # and write the richer properties (Role Family, Fit Band, evidence, gaps)
-    # instead of the bare Stage-0 record. src/ai/{classifier,matcher}.py and
-    # src/achievements/* already define the contracts for this.
-    write_to_notion(survivors, notion, summary)
+    # Stage 2/3 (achievement retrieval + deep match) deliberately stay
+    # on-demand only — capabilities.analyse_job() — not automatic here. See
+    # module docstring for why.
+    write_to_notion(stage1_survivors, notion, summary)
 
+    summary.estimated_cost_usd = estimate_run_cost(workflow="classify_job", since=run_started_at)
     return summary
 
 

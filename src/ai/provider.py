@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 import requests
@@ -43,6 +44,7 @@ class LLMProvider:
         success = True
         error = None
         usage = {"prompt_tokens": 0, "completion_tokens": 0}
+        cost_usd = 0.0
         content = "{}"
         try:
             resp = requests.post(
@@ -60,6 +62,13 @@ class LLMProvider:
             resp.raise_for_status()
             payload = resp.json()
             usage = payload.get("usage", usage)
+            # AI/ML API returns the real, already-computed cost of this exact
+            # call in meta.usage.usd_spent — more reliable than maintaining a
+            # per-model $/token pricing table that goes stale. Other
+            # OpenAI-compatible providers won't have this field; 0.0 is a
+            # safe, honest fallback (token counts above are still recorded
+            # regardless, so nothing is lost if this is absent).
+            cost_usd = payload.get("meta", {}).get("usage", {}).get("usd_spent", 0.0)
             content = payload["choices"][0]["message"]["content"]
         except Exception as exc:  # noqa: BLE001 — always record telemetry, even on failure
             success = False
@@ -68,14 +77,14 @@ class LLMProvider:
         finally:
             record_usage(
                 AIUsageRecord(
-                    timestamp=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+                    timestamp=datetime.now(timezone.utc),
                     workflow=workflow,
                     job_id=job_id,
                     model=model,
                     provider=self.provider_name,
                     input_tokens=usage.get("prompt_tokens", 0),
                     output_tokens=usage.get("completion_tokens", 0),
-                    estimated_cost_usd=0.0,  # filled in once real per-model pricing is confirmed
+                    estimated_cost_usd=cost_usd,
                     latency_ms=int((time.monotonic() - start) * 1000),
                     success=success,
                     error=error,

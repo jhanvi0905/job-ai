@@ -1,4 +1,4 @@
-"""Pipeline: fetch -> normalize -> dedupe -> deterministic filter -> cheap AI
+"""Pipeline: fetch -> normalize -> deterministic filter -> dedupe -> cheap AI
 triage -> Notion.
 
 Stage 0 (everything through dedupe_and_filter) is zero-AI-call and safe to
@@ -83,9 +83,25 @@ def dedupe_and_filter(
     summary: RunSummary,
 ) -> list[tuple[NormalizedJob, dict | None]]:
     """Returns (job, existing_notion_page_or_None) so write_to_notion doesn't
-    have to re-query the same fingerprint a second time."""
+    have to re-query the same fingerprint a second time.
+
+    Order matters here: apply_filters() first (free, local, instant), THEN
+    the Notion dedup lookup (a network round-trip) — only for jobs that
+    already survived filtering. Doing it the other way around means one
+    Notion API call per RAW fetched job (thousands) instead of per Stage-0
+    survivor (tens) — this was a real bug in an earlier version that made a
+    single run take 20+ minutes on network I/O alone. Progressive
+    intelligence (PRD §2.3) applies to every expensive operation, not just AI
+    calls — Notion API round-trips are exactly this kind of expensive step.
+    """
     survivors: list[tuple[NormalizedJob, dict | None]] = []
     for job in jobs:
+        result = apply_filters(job, career_rules, roles_config)
+        if not result.passed:
+            summary.stale_or_filtered += 1
+            logger.debug("filtered out %s @ %s: %s", job.title, job.company_name, result.reasons)
+            continue
+
         try:
             existing = notion.find_by_fingerprint(job.job_fingerprint)
         except Exception as exc:  # noqa: BLE001 — one job's Notion hiccup must not kill the batch
@@ -100,12 +116,6 @@ def dedupe_and_filter(
                 summary.duplicates += 1
                 continue
             # Fingerprint matches but description changed -> re-evaluate (PRD §12).
-
-        result = apply_filters(job, career_rules, roles_config)
-        if not result.passed:
-            summary.stale_or_filtered += 1
-            logger.debug("filtered out %s @ %s: %s", job.title, job.company_name, result.reasons)
-            continue
 
         summary.new_candidates += 1
         survivors.append((job, existing))

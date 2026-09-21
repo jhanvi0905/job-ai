@@ -13,12 +13,25 @@ from src.jobs.normalize import normalize_job
 from src.jobs.schemas import NormalizedJob
 from src.workflows.process_job import SOURCE_TYPES
 
+# Source types where one config entry = one company (Greenhouse/Lever/Ashby/
+# SmartRecruiters) — refetch by looking up that exact company's board.
+# Aggregator source types (Himalayas) span many companies per config entry,
+# so a job's stored company_name won't match any sources.yaml entry name;
+# refetch instead has to search across every configured query of that type.
+_AGGREGATOR_SOURCE_TYPES = {"himalayas"}
+
 
 class JobNotFoundError(Exception):
     pass
 
 
 def refetch_job(company_name: str, source_type: str, external_job_id: str) -> NormalizedJob:
+    if source_type in _AGGREGATOR_SOURCE_TYPES:
+        return _refetch_from_aggregator(source_type, external_job_id)
+    return _refetch_from_company_board(company_name, source_type, external_job_id)
+
+
+def _refetch_from_company_board(company_name: str, source_type: str, external_job_id: str) -> NormalizedJob:
     company_cfg = next(
         (
             c
@@ -42,4 +55,24 @@ def refetch_job(company_name: str, source_type: str, external_job_id: str) -> No
     raise JobNotFoundError(
         f"{company_name}/{external_job_id} was found in Notion but is no longer "
         "posted on the source board (likely closed) — nothing to re-analyse."
+    )
+
+
+def _refetch_from_aggregator(source_type: str, external_job_id: str) -> NormalizedJob:
+    """A Himalayas-sourced job's stored company (e.g. 'mercor') isn't itself a
+    sources.yaml entry — the config entries are search queries, not
+    companies. Re-run every configured query of this source type and look
+    for the matching job. Cheap: a handful of requests, not thousands."""
+    source_cls = SOURCE_TYPES[source_type]
+    queries = [c for c in load_sources() if c["source"]["type"] == source_type]
+
+    for company in queries:
+        source = source_cls(company_name=company["name"], identifier=company["source"]["identifier"])
+        for raw in source.fetch_jobs():
+            if raw.external_job_id == external_job_id:
+                return normalize_job(raw)
+
+    raise JobNotFoundError(
+        f"{source_type}/{external_job_id} was found in Notion but no longer appears in any "
+        f"configured {source_type} query — likely closed or fell off the result window."
     )

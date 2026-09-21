@@ -220,6 +220,50 @@ companies:
       type: greenhouse
       identifier: planetscale
 
+  # --- Himalayas: a cross-company remote-job AGGREGATOR, not one board per
+  # company (unlike everything above). Each entry here is a search query
+  # (country/worldwide + keyword), verified live 2026-09-22 to return real,
+  # India-eligible AI/ML roles that none of the single-company boards above
+  # were surfacing (e.g. "AI Platform Engineer" at Granicus, explicitly
+  # India-eligible). Confirmed limitation: the API's pagination is broken on
+  # /search (offset is silently ignored), so each query only reliably
+  # returns its first ~20 results — multiple targeted queries compensate.
+  - name: "Himalayas: India · AI Engineer"
+    priority: A
+    source:
+      type: himalayas
+      identifier: "country=IN&q=AI+engineer"
+
+  - name: "Himalayas: India · Machine Learning Engineer"
+    priority: A
+    source:
+      type: himalayas
+      identifier: "country=IN&q=machine+learning+engineer"
+
+  - name: "Himalayas: India · Data Engineer"
+    priority: B
+    source:
+      type: himalayas
+      identifier: "country=IN&q=data+engineer"
+
+  - name: "Himalayas: Worldwide · AI Engineer"
+    priority: A
+    source:
+      type: himalayas
+      identifier: "worldwide=true&q=AI+engineer"
+
+  - name: "Himalayas: Worldwide · Machine Learning Engineer"
+    priority: A
+    source:
+      type: himalayas
+      identifier: "worldwide=true&q=machine+learning+engineer"
+
+  - name: "Himalayas: Worldwide · LLM Engineer"
+    priority: B
+    source:
+      type: himalayas
+      identifier: "worldwide=true&q=LLM+engineer"
+
 # No SmartRecruiters seed yet — AI-native companies rarely publish there. The
 # adapter (src/sources/smartrecruiters.py) exists and works; add an identifier
 # here once you find a relevant employer using it, no code change required.

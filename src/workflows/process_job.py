@@ -28,6 +28,7 @@ from src.jobs.schemas import JobClassification, NormalizedJob
 from src.sources.ashby import AshbySource
 from src.sources.base import JobSource
 from src.sources.greenhouse import GreenhouseSource
+from src.sources.himalayas import HimalayasSource
 from src.sources.lever import LeverSource
 from src.sources.smartrecruiters import SmartRecruitersSource
 from src.telemetry.logging import RunSummary
@@ -40,6 +41,7 @@ SOURCE_TYPES: dict[str, type[JobSource]] = {
     "lever": LeverSource,
     "smartrecruiters": SmartRecruitersSource,
     "ashby": AshbySource,
+    "himalayas": HimalayasSource,
 }
 
 

@@ -1,0 +1,41 @@
+# AI model routing — config-driven, never hardcoded in ai/*.py.
+#
+# Provider: AI/ML API (OpenAI-compatible), base_url below. Verify the exact
+# model slugs against your live AI/ML API dashboard (https://aimlapi.com/app)
+# BEFORE the first real run — model catalogs and pricing change, and this file
+# should never be trusted blindly. `scripts/verify_models.py` does this check
+# for you: it sends one trivial tool-calling request per configured model and
+# confirms it returns well-formed structured output before anything is wired
+# into the pipeline (this is the project's Gate 1 equivalent).
+#
+# Budget note: you have ~$10 on this key. Stage 1 (classification) runs on
+# every job that survives Stage 0 deterministic filtering; Stage 2 (deep match)
+# only runs on the small shortlist that survives Stage 1. Keep classification
+# on the cheapest model that reliably returns valid structured JSON.
+
+provider:
+  name: aimlapi
+  base_url: "https://api.aimlapi.com/v1"
+  api_key_env: "AIMLAPI_KEY"
+
+routing:
+  classify_job:
+    # Cheapest capable model with reliable structured-output / tool-calling.
+    # Placeholder slug — confirm via scripts/verify_models.py before use.
+    model: "gpt-4o-mini"
+    max_output_tokens: 250
+    temperature: 0
+
+  analyse_match:
+    # Stronger model — only invoked for the small Stage-1 survivor set.
+    model: "gpt-4o-mini"
+    max_output_tokens: 600
+    temperature: 0
+
+# Future stages (not built in MVP, kept here so routing stays config-driven
+# when they're added — see PRD §18):
+future:
+  tailor_resume:
+    model: null
+  interview_prep:
+    model: null

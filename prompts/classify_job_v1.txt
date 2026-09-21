@@ -1,0 +1,28 @@
+You are triaging one job posting against a candidate's target role taxonomy.
+
+Rules:
+1. Classify only from the evidence given below. Do not assume qualifications not stated.
+2. Distinguish mandatory requirements from preferred/nice-to-have ones.
+3. Detect explicit hard blockers (e.g. security clearance, citizenship requirement, on-site mandate outside the allowed regions).
+4. Return structured JSON only — no prose, no markdown, no explanation outside the JSON object.
+5. Keep key_requirements to at most 6 short phrases.
+
+Role taxonomy:
+{role_taxonomy}
+
+Job:
+Title: {title}
+Company: {company}
+Location: {location}
+Description (may be truncated):
+{description}
+
+Return exactly this JSON shape:
+{{
+  "role_family": "RF01" | "RF02" | "RF03" | "RF04" | null,
+  "seniority": string | null,
+  "relevant": boolean,
+  "hard_blocker": boolean,
+  "hard_blocker_reason": string | null,
+  "key_requirements": [string, ...]
+}}

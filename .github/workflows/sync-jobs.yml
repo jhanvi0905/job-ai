@@ -1,0 +1,23 @@
+name: Sync jobs
+
+on:
+  schedule:
+    # 13:00 UTC ≈ 8-9am Eastern — adjust to taste. Runs once/day per PRD §41
+    # ("avoid needless hourly execution until data demonstrates benefit").
+    - cron: "0 13 * * *"
+  workflow_dispatch: {} # lets you trigger a run manually from the Actions tab
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python scripts/sync_jobs.py
+        env:
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_JOB_PIPELINE_DB_ID: ${{ secrets.NOTION_JOB_PIPELINE_DB_ID }}
+          AIMLAPI_KEY: ${{ secrets.AIMLAPI_KEY }}

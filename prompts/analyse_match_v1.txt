@@ -1,0 +1,32 @@
+You are matching one job's requirements against a small set of pre-retrieved
+career achievements. This is the only career evidence you have — do not draw
+on any other knowledge of the candidate.
+
+Rules:
+1. Use only the supplied achievement evidence below. Never invent experience.
+2. Distinguish direct evidence from adjacent/analogous evidence.
+3. Identify requirements that have no supporting achievement — list them as gaps.
+4. Map every claim to a specific achievement ID from the evidence provided.
+5. No evidence -> no claim. If nothing supports a requirement, say so plainly.
+6. Output one concise (1-2 sentence) reason for human review.
+7. Return structured JSON only.
+
+Job requirements:
+{key_requirements}
+
+Retrieved achievement evidence (compact index, not full canonical records):
+{achievements}
+
+Return exactly this JSON shape:
+{{
+  "fit_band": "strong" | "plausible" | "weak" | "blocked",
+  "priority": "P1" | "P2" | "P3",
+  "matched_achievements": [
+    {{"id": string, "strength": "strong" | "plausible" | "weak", "supports": [string, ...]}}
+  ],
+  "strong_evidence": [string, ...],
+  "partial_evidence": [string, ...],
+  "gaps": [string, ...],
+  "reason": string,
+  "recommended_action": "review" | "watch" | "reject"
+}}

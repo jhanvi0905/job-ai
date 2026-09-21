@@ -1,0 +1,78 @@
+# Job source registry — target companies to poll.
+# Do NOT hardcode companies in connector code; everything lives here.
+#
+# tier controls poll frequency (interpreted by the scheduler, not the source adapters):
+#   A = high-value target, poll frequently (every run)
+#   B = good target, poll daily
+#   C = discovery / long-tail, poll less frequently (e.g. every 3rd run)
+#
+# `identifier` is the source's board token, verified live against the public
+# Greenhouse/Lever APIs on 2026-09-21 (see README for how to re-verify / add more).
+
+companies:
+  # --- Tier A: AI-native, large open role count, strong fit for RF01/RF02 ---
+  - name: Anthropic
+    priority: A
+    source:
+      type: greenhouse
+      identifier: anthropic
+
+  - name: Databricks
+    priority: A
+    source:
+      type: greenhouse
+      identifier: databricks
+
+  - name: Scale AI
+    priority: A
+    source:
+      type: greenhouse
+      identifier: scaleai
+
+  - name: xAI
+    priority: A
+    source:
+      type: greenhouse
+      identifier: xai
+
+  - name: Glean
+    priority: A
+    source:
+      type: greenhouse
+      identifier: gleanwork
+
+  # --- Tier B: smaller but relevant, good fit for RF04 (early/lead AI eng at startups) ---
+  - name: Vercel
+    priority: B
+    source:
+      type: greenhouse
+      identifier: vercel
+
+  - name: Together AI
+    priority: B
+    source:
+      type: greenhouse
+      identifier: togetherai
+
+  - name: AssemblyAI
+    priority: B
+    source:
+      type: greenhouse
+      identifier: assemblyai
+
+  - name: Stability AI
+    priority: B
+    source:
+      type: greenhouse
+      identifier: stabilityai
+
+  # --- Tier C: discovery / long-tail, valid board token confirmed but low current volume ---
+  - name: Anyscale
+    priority: C
+    source:
+      type: lever
+      identifier: anyscale
+
+# No SmartRecruiters seed yet — AI-native companies rarely publish there. The
+# adapter (src/sources/smartrecruiters.py) exists and works; add an identifier
+# here once you find a relevant employer using it, no code change required.

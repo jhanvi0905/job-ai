@@ -1,0 +1,90 @@
+# Role taxonomy — configurable, not hardcoded in application logic.
+# Each family lists signals used by: (a) Stage 0 deterministic title/keyword
+# assist, and (b) Stage 1 cheap AI classification prompt context.
+
+role_families:
+  RF01:
+    name: "Senior / Lead AI Engineer"
+    title_aliases:
+      - "AI Engineer"
+      - "Senior AI Engineer"
+      - "Lead AI Engineer"
+      - "AI Systems Engineer"
+      - "LLM Engineer"
+      - "Applied AI Engineer"
+    signals:
+      - "LLM systems"
+      - "agents"
+      - "RAG"
+      - "AI workflows"
+      - "production AI"
+      - "orchestration"
+      - "evaluations"
+      - "AI platform work"
+
+  RF02:
+    name: "Senior ML / Applied AI Engineer"
+    title_aliases:
+      - "Machine Learning Engineer"
+      - "ML Engineer"
+      - "Applied Scientist"
+      - "ML Platform Engineer"
+      - "Applied AI Engineer"
+    signals:
+      - "applied ML"
+      - "intelligent automation"
+      - "model-serving systems"
+      - "ML pipelines"
+      - "production ML"
+
+  RF03:
+    name: "Senior Data / ML Systems Engineer"
+    title_aliases:
+      - "Data Engineer"
+      - "ML Systems Engineer"
+      - "ML Infrastructure Engineer"
+      - "Data Platform Engineer"
+    signals:
+      - "distributed data"
+      - "streaming"
+      - "BigQuery"
+      - "BigLake"
+      - "Kafka"
+      - "Pub/Sub"
+      - "ML infrastructure"
+      - "data architecture"
+
+  RF04:
+    name: "Lead / Early AI Engineer at Startups"
+    title_aliases:
+      - "Founding Engineer"
+      - "Early AI Engineer"
+      - "Lead Engineer"
+      - "Head of AI"
+      - "AI Engineer"
+    signals:
+      - "0->1"
+      - "ambiguity"
+      - "architecture"
+      - "product engineering"
+      - "end-to-end ownership"
+      - "rapid prototyping to production"
+      - "founder-facing or small-team ownership"
+
+# Positive keyword assists (Stage 0). These ASSIST filtering; they never
+# determine final suitability on their own.
+keyword_assists:
+  - LLM
+  - agent
+  - RAG
+  - evaluation
+  - Python
+  - Kafka
+  - BigQuery
+  - streaming
+  - MLOps
+  - distributed systems
+  - Vertex AI
+  - embeddings
+  - orchestration
+  - production AI

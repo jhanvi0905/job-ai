@@ -1,0 +1,63 @@
+# Deterministic filtering rules (Stage 0 — zero model calls).
+# All values here are config, not code. Change freely without touching filters.py.
+
+location:
+  # Location policy is Remote-first for now, but built to be swapped without
+  # touching filters.py — just add/remove entries here.
+  allowed_workplace_types:
+    - Remote
+  allowed_regions:
+    - Global Remote
+    - Canada
+    - United States
+  # If true, a job with no parseable location/workplace_type is NOT auto-rejected —
+  # it falls through to Stage 1 AI triage instead of being deterministically killed,
+  # since free-text locations are often ambiguous ("Remote (US)" vs "Remote - EMEA only").
+  unknown_location_passes_through: true
+
+recency:
+  # Jobs older than this are hard-excluded at Stage 0. Configurable, not hardcoded.
+  max_age_days: 14
+
+seniority:
+  hard_exclude_keywords:
+    - "intern"
+    - "internship"
+    - "new grad"
+    - "junior"
+    - "entry level"
+    - "entry-level"
+    - "apprentice"
+
+hard_exclusions:
+  title_keywords:
+    - "security clearance required"
+    - "TS/SCI"
+    - "citizenship required"
+  description_keywords:
+    - "must be a US citizen"
+    - "active security clearance"
+
+employment_type:
+  # Jobs of these types are excluded outright (config, not code).
+  excluded:
+    - "Internship"
+    - "Temporary"
+
+# Weighted keyword assists used only to break ties / rank within Stage 0 —
+# never used alone to reject a job.
+keyword_weights:
+  LLM: 3
+  agent: 2
+  RAG: 3
+  evaluation: 1
+  Python: 1
+  Kafka: 2
+  BigQuery: 2
+  streaming: 1
+  MLOps: 2
+  "distributed systems": 2
+  "Vertex AI": 2
+  embeddings: 2
+  orchestration: 2
+  "production AI": 3

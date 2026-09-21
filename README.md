@@ -11,17 +11,17 @@ Job Search`). Full product spec: see the PRD this repo was built from.
 |---|---|---|
 | 0 — Inspect | Read existing Notion schema, achievement bank, propose schema diff | ✅ done (diff applied to Notion) |
 | 1 — One source end-to-end | Greenhouse fetch → normalize → dedupe → deterministic filter → Notion, no AI | ✅ done, tested |
-| 2 — AI classification | Cheap triage (relevant / role family / hard blockers) | 🔲 seam ready (`src/ai/classifier.py`), not wired in |
-| 3 — Achievement matching | Deterministic retrieval + deep match, evidence + gaps into Notion | 🔲 seam ready (`src/achievements/*`, `src/ai/matcher.py`), not wired in |
+| 2 — AI classification | Cheap triage (relevant / role family / hard blockers) | ✅ built, callable via `analyse_job()`, not yet run against real models |
+| 3 — Achievement matching | Deterministic retrieval + deep match, evidence + gaps into Notion | ✅ built, callable via `analyse_job()`, not yet run against real models |
 | 4 — More sources | Lever, SmartRecruiters | ✅ adapters built, Lever seeded (Anyscale); SmartRecruiters has no seed yet |
 | 5 — Scheduling | Daily automated run | ✅ GitHub Actions workflow ready, disabled until secrets are set |
 
-Phases 2/3 are intentionally **not** wired into the live pipeline yet — per
-the spec's own phasing (and PRD §48 Rule 4/§45 kill-criteria mindset), Phase 1
-should prove acquisition + Notion integration cleanly before any AI spend.
-The code for Phase 2/3 exists and is unit-testable in isolation
-(`tests/test_retrieval.py`), it's just not called from `workflows/process_job.py`
-yet — see the "Stage 1/2/3 seam" comment in that file for exactly where it plugs in.
+Phase 2/3 code is built and callable (`analyse_job()`, see below) but is
+**not** part of the automatic `discover_jobs()` batch flow — per the spec's
+own phasing (PRD §48 Rule 4 / §45 kill-criteria mindset), batch AI spend
+should only turn on once you've run `scripts/verify_models.py` against your
+real AI/ML API models. Until then, `analyse_job()` lets you test Stage 1-3
+against one real job at a time without touching the daily discovery run.
 
 ## Setup
 
@@ -77,6 +77,28 @@ you asked for it to be reasoned through rather than assumed:
 If you'd rather not push this to GitHub at all, `crontab -e` with a line like
 `0 8 * * * cd ~/lifeos-job-agent && .venv/bin/python scripts/sync_jobs.py >> logs/cron.log 2>&1`
 works identically — just less resilient to your laptop being asleep at 8am.
+
+## Callable capabilities (`src/capabilities.py`)
+
+Per PRD §25, three plain functions a future LifeOS master assistant can call
+later — through MCP, an HTTP handler, a LangChain/LangGraph tool wrapper,
+whatever transport shows up eventually. Nothing here is itself an agent: no
+loop, no self-directed tool selection, just typed functions.
+
+```python
+from src.capabilities import discover_jobs, analyse_job, get_priority_jobs
+
+discover_jobs()                          # Phase 1, zero AI calls, safe to run often
+analyse_job("greenhouse:4123456")        # Stage 1+2+3 for ONE job, spends AI tokens, writes back to Notion
+get_priority_jobs(limit=15)              # read-only "Jobs to Review" queue, Priority then Date Posted
+```
+
+`analyse_job` re-fetches the job's full description from its origin ATS
+(`src/jobs/refetch.py`) rather than reading it back from Notion — Notion only
+stores a `JD Hash` for change-detection, not the full text (PRD §5 rules out
+a second duplicate-storage system, and JDs regularly exceed Notion's
+rich_text limits anyway). This means `analyse_job` only works for jobs still
+live on the source board; a closed posting raises `JobNotFoundError`.
 
 ## Extending
 

@@ -55,6 +55,13 @@ class NotionClient:
         results = resp.json().get("results", [])
         return results[0] if results else None
 
+    def get_plain_by_fingerprint(self, job_fingerprint: str) -> Optional[dict]:
+        """Same lookup as find_by_fingerprint, flattened to plain values —
+        what analyse_job() needs (Company, Role, Job URL) without parsing
+        raw Notion property JSON itself."""
+        page = self.find_by_fingerprint(job_fingerprint)
+        return _page_to_plain_dict(page) if page else None
+
     def create_job_page(self, properties: dict) -> dict:
         resp = self.session.post(
             f"{API_BASE}/pages",
@@ -75,6 +82,51 @@ class NotionClient:
         )
         resp.raise_for_status()
         return resp.json()
+
+    def query_priority_jobs(self, limit: int = 15) -> list[dict]:
+        """The 'Jobs to Review' queue (PRD §37): open pipeline statuses only,
+        sorted by Priority then Date Posted — read-only, no writes."""
+        resp = self.session.post(
+            f"{API_BASE}/databases/{self.database_id}/query",
+            json={
+                "filter": {
+                    "property": "Status",
+                    "select": {"is_not_empty": True},
+                },
+                "sorts": [
+                    {"property": "Priority", "direction": "ascending"},
+                    {"property": "Date Posted", "direction": "descending"},
+                ],
+                "page_size": limit,
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        return [_page_to_plain_dict(p) for p in resp.json().get("results", [])]
+
+
+def _plain_value(prop: dict):
+    ptype = prop.get("type")
+    if ptype == "title":
+        return "".join(t["plain_text"] for t in prop["title"]) or None
+    if ptype == "rich_text":
+        return "".join(t["plain_text"] for t in prop["rich_text"]) or None
+    if ptype == "select":
+        return prop["select"]["name"] if prop["select"] else None
+    if ptype == "url":
+        return prop.get("url")
+    if ptype == "date":
+        return prop["date"]["start"] if prop["date"] else None
+    return None
+
+
+def _page_to_plain_dict(page: dict) -> dict:
+    """Flattens a Notion page into plain field:value pairs — the shape a
+    future caller (MCP tool, HTTP handler) actually wants, not raw Notion JSON."""
+    out = {"notion_page_id": page["id"], "notion_url": page.get("url")}
+    for name, prop in page.get("properties", {}).items():
+        out[name] = _plain_value(prop)
+    return out
 
 
 def _rich_text(value: str) -> dict:

@@ -118,6 +118,108 @@ companies:
       type: ashby
       identifier: runway
 
+  # --- 2026-09-22 expansion: diagnosed that the small review-queue size was
+  # driven by breadth (only 17 companies), not a filtering bug — 3,533/3,689
+  # jobs were excluded purely on location eligibility, which is expected
+  # (most roles at any company aren't remote-from-India-eligible). More
+  # verified companies is the lever that actually works. All confirmed live
+  # via direct API probes on 2026-09-22, not guessed. ---
+  - name: Perplexity AI
+    priority: A
+    source:
+      type: ashby
+      identifier: perplexity
+
+  - name: ElevenLabs
+    priority: A
+    source:
+      type: ashby
+      identifier: elevenlabs
+
+  - name: Baseten
+    priority: A
+    source:
+      type: ashby
+      identifier: baseten
+
+  - name: Fireworks AI
+    priority: A
+    source:
+      type: ashby
+      identifier: fireworks
+
+  - name: Deepgram
+    priority: B
+    source:
+      type: ashby
+      identifier: deepgram
+
+  - name: Suno
+    priority: B
+    source:
+      type: ashby
+      identifier: suno
+
+  - name: Lovable
+    priority: B
+    source:
+      type: ashby
+      identifier: lovable
+
+  - name: Pinecone
+    priority: C
+    source:
+      type: ashby
+      identifier: pinecone
+
+  - name: Hex
+    priority: C
+    source:
+      type: ashby
+      identifier: hex
+
+  - name: Airbyte
+    priority: C
+    source:
+      type: ashby
+      identifier: airbyte
+
+  - name: Weaviate
+    priority: C
+    source:
+      type: ashby
+      identifier: weaviate
+
+  - name: Fivetran
+    priority: B
+    source:
+      type: greenhouse
+      identifier: fivetran
+
+  - name: Elastic
+    priority: B
+    source:
+      type: greenhouse
+      identifier: elastic
+
+  - name: GitLab
+    priority: C
+    source:
+      type: greenhouse
+      identifier: gitlab
+
+  - name: Cloudflare
+    priority: C
+    source:
+      type: greenhouse
+      identifier: cloudflare
+
+  - name: PlanetScale
+    priority: C
+    source:
+      type: greenhouse
+      identifier: planetscale
+
 # No SmartRecruiters seed yet — AI-native companies rarely publish there. The
 # adapter (src/sources/smartrecruiters.py) exists and works; add an identifier
 # here once you find a relevant employer using it, no code change required.

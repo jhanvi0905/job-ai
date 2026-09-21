@@ -73,6 +73,51 @@ companies:
       type: lever
       identifier: anyscale
 
+  # --- Ashby: many AI-native startups use this instead of Greenhouse/Lever.
+  # Verified live 2026-09-21, structured workplaceType/country fields (more
+  # reliable geo-eligibility signal than Greenhouse/Lever's free text). ---
+  - name: OpenAI
+    priority: A
+    source:
+      type: ashby
+      identifier: openai
+
+  - name: LangChain
+    priority: A
+    source:
+      type: ashby
+      identifier: langchain
+
+  - name: Harvey
+    priority: A
+    source:
+      type: ashby
+      identifier: harvey
+
+  - name: Modal
+    priority: B
+    source:
+      type: ashby
+      identifier: modal
+
+  - name: Cursor
+    priority: B
+    source:
+      type: ashby
+      identifier: cursor
+
+  - name: Browserbase
+    priority: C
+    source:
+      type: ashby
+      identifier: browserbase
+
+  - name: Runway
+    priority: C
+    source:
+      type: ashby
+      identifier: runway
+
 # No SmartRecruiters seed yet — AI-native companies rarely publish there. The
 # adapter (src/sources/smartrecruiters.py) exists and works; add an identifier
 # here once you find a relevant employer using it, no code change required.

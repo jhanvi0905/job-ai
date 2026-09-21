@@ -2,14 +2,69 @@
 # All values here are config, not code. Change freely without touching filters.py.
 
 location:
-  # Location policy is Remote-first for now, but built to be swapped without
-  # touching filters.py — just add/remove entries here.
+  # This is about ELIGIBILITY, not job-posting geography: "can the candidate
+  # (based in candidate_country) actually work this job", regardless of what
+  # country the company itself is in. To retarget later (Canada, elsewhere),
+  # change candidate_country — nothing else needs to change.
+  candidate_country: "India"
+
   allowed_workplace_types:
     - Remote
-  allowed_regions:
-    - Global Remote
-    - Canada
-    - United States
+    # On-site/Hybrid jobs are allowed ONLY when the job is physically located
+    # in candidate_country (see filters.py) — e.g. a Bangalore-based role.
+    - Hybrid
+    - On-site
+
+  # Signals that mean "open globally / explicitly open to candidate_country" —
+  # presence of any of these clears a restrictive/named-region hit below.
+  # Deliberately does NOT include "remote" itself: being remote does not
+  # imply global scope (see "Remote - United States").
+  eligible_signals:
+    - "global"
+    - "anywhere"
+    - "worldwide"
+    - "international"
+    - "apac"
+    - "india"
+
+  # Specific country/region names that, when they appear ALONE in the
+  # location field with no eligible_signal alongside them, mark a "Remote"
+  # job as restricted to that country/region. Catches ATS location strings
+  # like "Remote - United States" that never say "must be based in..." in
+  # prose but still mean the same thing.
+  location_named_regions:
+    - "united states"
+    - "usa"
+    - "u.s."
+    - "canada"
+    - "united kingdom"
+    - "emea"
+    - "europe"
+    - "north america"
+
+  # Remote-job text signals that mean the role is geographically restricted
+  # AWAY from candidate_country. A job is excluded only if one of these
+  # appears AND candidate_country is not also explicitly named — this is a
+  # text heuristic, not a legal read of visa/tax eligibility, so it's
+  # deliberately permissive: ambiguous cases fall through to Stage 1 AI
+  # triage rather than being silently killed here.
+  restrictive_signals:
+    - "us only"
+    - "u.s. only"
+    - "usa only"
+    - "united states only"
+    - "us-based"
+    - "us based"
+    - "within the united states"
+    - "must be based in the united states"
+    - "must be authorized to work in the united states"
+    - "canada only"
+    - "uk only"
+    - "u.k. only"
+    - "eu only"
+    - "emea only"
+    - "must reside in"
+
   # If true, a job with no parseable location/workplace_type is NOT auto-rejected —
   # it falls through to Stage 1 AI triage instead of being deterministically killed,
   # since free-text locations are often ambiguous ("Remote (US)" vs "Remote - EMEA only").
@@ -34,6 +89,36 @@ hard_exclusions:
     - "security clearance required"
     - "TS/SCI"
     - "citizenship required"
+    # Non-engineering functions. Real AI/ML companies' Greenhouse postings
+    # repeat the same "About Us" boilerplate (which name-drops AI/ML/BigQuery
+    # etc.) across EVERY req, including Payroll and Sales — so keyword_weights
+    # alone lets those through. These titles are unambiguous noise regardless
+    # of company; genuinely ambiguous titles (Solutions Architect, Forward
+    # Deployed Engineer, Technical Support) are deliberately left OUT of this
+    # list for Stage 1 AI triage to judge, since whether those count as
+    # in-scope is a real product-scope call, not a clear-cut exclusion.
+    - "account executive"
+    - "account director"
+    - "account manager"
+    - "sales"
+    - "recruiter"
+    - "recruiting"
+    - "payroll"
+    - "procurement"
+    - "accountant"
+    - "accounting"
+    - "collections"
+    - "sap "
+    - "sox "
+    - "customer success"
+    - "product marketing"
+    - "marketing manager"
+    - "hr business partner"
+    - "total rewards"
+    - "tutor"
+    - "editor"
+    - "legal counsel"
+    - "paralegal"
   description_keywords:
     - "must be a US citizen"
     - "active security clearance"

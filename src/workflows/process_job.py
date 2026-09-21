@@ -14,6 +14,7 @@ from src.integrations.notion import NotionClient
 from src.jobs.filters import apply_filters
 from src.jobs.normalize import normalize_job
 from src.jobs.schemas import NormalizedJob
+from src.sources.ashby import AshbySource
 from src.sources.base import JobSource
 from src.sources.greenhouse import GreenhouseSource
 from src.sources.lever import LeverSource
@@ -26,6 +27,7 @@ SOURCE_TYPES: dict[str, type[JobSource]] = {
     "greenhouse": GreenhouseSource,
     "lever": LeverSource,
     "smartrecruiters": SmartRecruitersSource,
+    "ashby": AshbySource,
 }
 
 

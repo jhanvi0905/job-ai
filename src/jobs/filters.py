@@ -25,6 +25,58 @@ def _title_matches_any_family(title: str, roles_config: dict) -> bool:
     return False
 
 
+def _location_eligible(job: NormalizedJob, loc_cfg: dict) -> tuple[bool, str | None]:
+    """Eligibility, not geography: can a candidate based in candidate_country
+    actually work this job. Returns (eligible, reason_if_not)."""
+    candidate_country = loc_cfg["candidate_country"].lower()
+    location_text = (job.location or "").lower()
+
+    # Structured country (Ashby) beats any text guess when present — for
+    # EVERY workplace type, not just on-site/hybrid. A "Remote" job whose ATS
+    # record still carries a specific addressCountry is real signal ("US -
+    # Remote" really does mean US-eligible-only on Ashby), unless the text
+    # also signals global/candidate_country scope (an HQ default address
+    # doesn't always mean the role itself is geo-restricted).
+    if job.location_country:
+        country_lower = job.location_country.lower()
+        if candidate_country in country_lower or country_lower in candidate_country:
+            return True, None
+        if job.workplace_type == "Remote":
+            haystack = f"{location_text} {job.description.lower()[:500]}"
+            if candidate_country in haystack or any(sig in haystack for sig in loc_cfg["eligible_signals"]):
+                return True, None
+        return False, f"structured location_country='{job.location_country}', not {loc_cfg['candidate_country']}"
+
+    if job.workplace_type in ("On-site", "Hybrid"):
+        # Only eligible if physically located in the candidate's country.
+        if candidate_country in location_text:
+            return True, None
+        return False, f"{job.workplace_type} role not located in {loc_cfg['candidate_country']}"
+
+    if job.workplace_type == "Remote":
+        haystack = f"{location_text} {job.description.lower()[:500]}"  # title/location context is usually enough; cap cost
+        has_global_scope = candidate_country in haystack or any(
+            sig in haystack for sig in loc_cfg["eligible_signals"]
+        )
+
+        restrictive_hit = next(
+            (sig for sig in loc_cfg["restrictive_signals"] if sig in haystack), None
+        )
+        # "Remote - United States" style location strings rarely use prose
+        # restriction phrases — catch the named region directly.
+        named_region_hit = next(
+            (region for region in loc_cfg.get("location_named_regions", []) if region in location_text),
+            None,
+        )
+
+        if (restrictive_hit or named_region_hit) and not has_global_scope:
+            reason = restrictive_hit or f"location names '{named_region_hit}'"
+            return False, f"remote but restricted ('{reason}'), no mention of {loc_cfg['candidate_country']} or global scope"
+        return True, None
+
+    return True, None  # Unknown workplace_type handled by the caller
+
+
 def apply_filters(job: NormalizedJob, career_rules: dict, roles_config: dict) -> FilterResult:
     reasons: list[str] = []
 
@@ -38,13 +90,17 @@ def apply_filters(job: NormalizedJob, career_rules: dict, roles_config: dict) ->
         if age_days > max_age_days:
             reasons.append(f"stale: posted {age_days}d ago (max {max_age_days}d)")
 
-    # --- Location / workplace type ---
+    # --- Location eligibility (works FROM candidate_country, any company) ---
     loc_cfg = career_rules["location"]
     if job.workplace_type == "Unknown":
         if not loc_cfg.get("unknown_location_passes_through", True):
             reasons.append("location unknown and pass-through disabled")
     elif job.workplace_type not in loc_cfg["allowed_workplace_types"]:
         reasons.append(f"workplace_type '{job.workplace_type}' not in allowed list")
+    else:
+        eligible, reason = _location_eligible(job, loc_cfg)
+        if not eligible:
+            reasons.append(reason)
 
     # --- Employment type hard exclusion ---
     excluded_types = {t.lower() for t in career_rules["employment_type"]["excluded"]}

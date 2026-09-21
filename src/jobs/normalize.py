@@ -19,7 +19,17 @@ def strip_html(html: str | None) -> str:
     return _WS_RE.sub(" ", text).strip()
 
 
-def infer_workplace_type(location: str | None) -> str:
+_ASHBY_WORKPLACE_MAP = {"Remote": "Remote", "Hybrid": "Hybrid", "OnSite": "On-site"}
+
+
+def infer_workplace_type(location: str | None, structured_workplace_type: str | None = None) -> str:
+    # Prefer a source's own structured field (e.g. Ashby's workplaceType) —
+    # it's the ATS's own classification, not a guess from free text.
+    if structured_workplace_type:
+        mapped = _ASHBY_WORKPLACE_MAP.get(structured_workplace_type)
+        if mapped:
+            return mapped
+
     if not location:
         return "Unknown"
     loc = location.lower()
@@ -54,7 +64,8 @@ def normalize_job(raw: RawJob) -> NormalizedJob:
         company_name=raw.company_name,
         title=raw.title.strip(),
         location=raw.location,
-        workplace_type=infer_workplace_type(raw.location),
+        workplace_type=infer_workplace_type(raw.location, raw.metadata.get("workplace_type")),
+        location_country=raw.metadata.get("location_country"),
         employment_type=raw.metadata.get("commitment"),
         description=description,
         posted_at=_parse_datetime(raw.updated_at),

@@ -40,11 +40,50 @@ def test_stale_job_is_filtered():
     assert any("stale" in r for r in result.reasons)
 
 
-def test_onsite_job_is_filtered():
+def test_onsite_job_outside_india_is_filtered():
     job = make_job(workplace_type="On-site", location="San Francisco")
     result = apply_filters(job, CAREER_RULES, ROLES)
     assert not result.passed
-    assert any("workplace_type" in r for r in result.reasons)
+    assert any("not located in India" in r for r in result.reasons)
+
+
+def test_onsite_job_in_india_passes_location_check():
+    job = make_job(workplace_type="On-site", location="Bangalore, India")
+    result = apply_filters(job, CAREER_RULES, ROLES)
+    assert result.passed
+
+
+def test_remote_job_restricted_to_us_is_filtered():
+    job = make_job(
+        workplace_type="Remote",
+        location="Remote (US Only)",
+        description="This role is US-based and open only to candidates within the United States.",
+    )
+    result = apply_filters(job, CAREER_RULES, ROLES)
+    assert not result.passed
+    assert any("restricted" in r for r in result.reasons)
+
+
+def test_remote_job_explicitly_open_to_india_passes_despite_restrictive_language():
+    job = make_job(
+        workplace_type="Remote",
+        location="Remote - US or India",
+        description="Open to candidates within the United States or India.",
+    )
+    result = apply_filters(job, CAREER_RULES, ROLES)
+    assert result.passed
+
+
+def test_remote_job_with_structured_country_from_ashby_is_respected():
+    # Ashby-sourced jobs carry a structured location_country — On-site/Hybrid
+    # eligibility should key off that instead of guessing from free text.
+    job = make_job(workplace_type="On-site", location="Bengaluru", location_country="India")
+    result = apply_filters(job, CAREER_RULES, ROLES)
+    assert result.passed
+
+    job2 = make_job(workplace_type="On-site", location="New York", location_country="United States")
+    result2 = apply_filters(job2, CAREER_RULES, ROLES)
+    assert not result2.passed
 
 
 def test_internship_title_is_filtered():

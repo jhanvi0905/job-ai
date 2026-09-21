@@ -34,6 +34,11 @@ class NormalizedJob(BaseModel):
     title: str
     location: Optional[str] = None
     workplace_type: Optional[Literal["Remote", "Hybrid", "On-site", "Unknown"]] = "Unknown"
+    # Structured country, when the source provides one (e.g. Ashby's
+    # address.postalAddress.addressCountry). None for sources that only give
+    # free text (Greenhouse/Lever/SmartRecruiters) — filters.py falls back to
+    # text signals in that case. Never guessed/fabricated.
+    location_country: Optional[str] = None
     employment_type: Optional[str] = None
     description: str = ""
     salary_min: Optional[float] = None

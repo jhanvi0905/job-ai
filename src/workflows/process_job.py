@@ -69,10 +69,19 @@ def dedupe_and_filter(
     career_rules: dict,
     roles_config: dict,
     summary: RunSummary,
-) -> list[NormalizedJob]:
-    survivors: list[NormalizedJob] = []
+) -> list[tuple[NormalizedJob, dict | None]]:
+    """Returns (job, existing_notion_page_or_None) so write_to_notion doesn't
+    have to re-query the same fingerprint a second time."""
+    survivors: list[tuple[NormalizedJob, dict | None]] = []
     for job in jobs:
-        existing = notion.find_by_fingerprint(job.job_fingerprint)
+        try:
+            existing = notion.find_by_fingerprint(job.job_fingerprint)
+        except Exception as exc:  # noqa: BLE001 — one job's Notion hiccup must not kill the batch
+            msg = f"dedupe lookup failed for {job.source}:{job.external_job_id}: {exc}"
+            logger.error(msg)
+            summary.source_errors.append(msg)
+            continue
+
         if existing is not None:
             existing_hash = _existing_jd_hash(existing)
             if existing_hash == job.description_hash:
@@ -87,7 +96,7 @@ def dedupe_and_filter(
             continue
 
         summary.new_candidates += 1
-        survivors.append(job)
+        survivors.append((job, existing))
     return survivors
 
 
@@ -99,9 +108,11 @@ def _existing_jd_hash(page: dict) -> str | None:
         return None
 
 
-def write_to_notion(jobs: list[NormalizedJob], notion: NotionClient, summary: RunSummary) -> None:
+def write_to_notion(
+    survivors: list[tuple[NormalizedJob, dict | None]], notion: NotionClient, summary: RunSummary
+) -> None:
     today = date.today().isoformat()
-    for job in jobs:
+    for job, existing in survivors:
         properties = {
             "Opportunity": f"{job.title} — {job.company_name}",
             "Company": job.company_name,
@@ -119,12 +130,16 @@ def write_to_notion(jobs: list[NormalizedJob], notion: NotionClient, summary: Ru
             "Last Checked": today,
             "Date Posted": job.posted_at.date().isoformat() if job.posted_at else None,
         }
-        existing = notion.find_by_fingerprint(job.job_fingerprint)
-        if existing is not None:
-            notion.update_job_page(existing["id"], properties)
-        else:
-            notion.create_job_page(properties)
-        summary.written_to_notion += 1
+        try:
+            if existing is not None:
+                notion.update_job_page(existing["id"], properties)
+            else:
+                notion.create_job_page(properties)
+            summary.written_to_notion += 1
+        except Exception as exc:  # noqa: BLE001 — one job's write failing must not kill the batch
+            msg = f"Notion write failed for {job.source}:{job.external_job_id}: {exc}"
+            logger.error(msg)
+            summary.source_errors.append(msg)
 
 
 def run() -> RunSummary:

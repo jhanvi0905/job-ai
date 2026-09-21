@@ -14,6 +14,8 @@ from datetime import date, datetime
 from typing import Optional
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 NOTION_VERSION = "2022-06-28"
 API_BASE = "https://api.notion.com/v1"
@@ -37,6 +39,18 @@ class NotionClient:
                 "Content-Type": "application/json",
             }
         )
+        # A ~150-request batch run WILL occasionally hit a dropped connection
+        # or a Notion 429/5xx (PRD §33/§34: retry transient errors, don't let
+        # one hiccup kill the whole run). Exponential backoff, connection
+        # resets included — this is exactly what killed the first live run.
+        retry = Retry(
+            total=5,
+            backoff_factor=1.5,
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET", "POST", "PATCH"],
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        self.session.mount("https://", adapter)
 
     def find_by_fingerprint(self, job_fingerprint: str) -> Optional[dict]:
         """Return the existing page for this fingerprint, or None."""

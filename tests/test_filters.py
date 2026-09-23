@@ -34,7 +34,7 @@ def test_relevant_remote_senior_ai_job_passes():
 
 
 def test_stale_job_is_filtered():
-    job = make_job(posted_at=datetime.now(timezone.utc) - timedelta(days=30))
+    job = make_job(posted_at=datetime.now(timezone.utc) - timedelta(days=45))
     result = apply_filters(job, CAREER_RULES, ROLES)
     assert not result.passed
     assert any("stale" in r for r in result.reasons)
@@ -120,3 +120,51 @@ def test_unknown_location_passes_through_by_default():
     # Passes through Stage 0 (not auto-rejected) since unknown_location_passes_through
     # is true — relevance is still gated by title/keyword signal.
     assert result.passed
+
+
+def test_too_senior_title_is_filtered():
+    for title in ("Staff AI Engineer", "Director, Machine Learning", "Principal ML Engineer", "Head of AI"):
+        result = apply_filters(make_job(title=title), CAREER_RULES, ROLES)
+        assert not result.passed, title
+        assert any("too senior" in r for r in result.reasons), title
+
+
+def test_staffing_is_not_mistaken_for_staff_level():
+    # whole-word match: "Staffing" must not trip the "staff" seniority rule
+    result = apply_filters(make_job(title="AI Engineer, Staffing Platform"), CAREER_RULES, ROLES)
+    assert result.passed
+
+
+def test_role_asking_far_more_years_than_candidate_is_filtered():
+    job = make_job(description="We need 10+ years of experience shipping production ML. LLM, RAG.")
+    result = apply_filters(job, CAREER_RULES, ROLES)
+    assert not result.passed
+    assert any("yrs" in r for r in result.reasons)
+
+
+def test_role_asking_within_reach_passes_and_records_years():
+    job = make_job(description="4+ years of experience with LLM systems and RAG.")
+    result = apply_filters(job, CAREER_RULES, ROLES)
+    assert result.passed
+    assert result.min_years_required == 4
+
+
+def test_junior_years_cap_is_filtered():
+    job = make_job(description="Ideal for 0-2 years of experience. LLM and RAG projects.")
+    result = apply_filters(job, CAREER_RULES, ROLES)
+    assert not result.passed
+
+
+def test_generic_software_engineer_title_is_filtered():
+    job = make_job(
+        title="Senior Software Engineer - Backend",
+        description="Our platform uses LLM, RAG and agent tooling across production AI.",
+    )
+    result = apply_filters(job, CAREER_RULES, ROLES)
+    assert not result.passed
+    assert any("no AI/ML/data signal" in r for r in result.reasons)
+
+
+def test_data_analyst_title_is_filtered():
+    result = apply_filters(make_job(title="Senior Data Analyst"), CAREER_RULES, ROLES)
+    assert not result.passed

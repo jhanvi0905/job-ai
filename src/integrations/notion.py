@@ -97,6 +97,37 @@ class NotionClient:
         resp.raise_for_status()
         return resp.json()
 
+    def list_all_pages(self) -> list[dict]:
+        """Every page in the Job Pipeline as flat plain-value dicts, via ONE
+        paginated bulk read (100/page). Replaces a Notion round-trip per job:
+        the run builds its dedup indexes in memory from this."""
+        pages: list[dict] = []
+        cursor = None
+        while True:
+            body: dict = {"page_size": 100}
+            if cursor:
+                body["start_cursor"] = cursor
+            resp = self.session.post(
+                f"{API_BASE}/databases/{self.database_id}/query", json=body, timeout=30
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            for p in data.get("results", []):
+                flat = _page_to_plain_dict(p)
+                flat["created_time"] = p.get("created_time")
+                pages.append(flat)
+            if not data.get("has_more"):
+                return pages
+            cursor = data.get("next_cursor")
+
+    def archive_page(self, page_id: str) -> None:
+        """Moves a page to Notion's trash (recoverable there for 30 days) —
+        never a hard delete."""
+        resp = self.session.patch(
+            f"{API_BASE}/pages/{page_id}", json={"archived": True}, timeout=15
+        )
+        resp.raise_for_status()
+
     def query_priority_jobs(self, limit: int = 15) -> list[dict]:
         """The 'Jobs to Review' queue (PRD §37): open pipeline statuses only,
         sorted by Priority then Date Posted — read-only, no writes."""

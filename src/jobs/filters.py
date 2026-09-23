@@ -1,9 +1,11 @@
 """Stage 0 — deterministic filtering. Zero model calls (PRD §14)."""
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from src.jobs.experience import extract_required_years
 from src.jobs.normalize import utcnow
 from src.jobs.schemas import NormalizedJob
 
@@ -14,6 +16,12 @@ class FilterResult:
     reasons: list[str] = field(default_factory=list)
     matched_keywords: list[str] = field(default_factory=list)
     keyword_score: int = 0
+    min_years_required: int | None = None
+    years_evidence: str = ""
+
+
+def _has_any(patterns: list[str], text: str) -> bool:
+    return any(re.search(p, text, re.I) for p in patterns)
 
 
 def _title_matches_any_family(title: str, roles_config: dict) -> bool:
@@ -114,6 +122,24 @@ def apply_filters(job: NormalizedJob, career_rules: dict, roles_config: dict) ->
             reasons.append(f"seniority exclusion keyword in title: '{kw}'")
             break
 
+    # --- Too-senior titles (Director/Staff/Principal/...): whole words, title only ---
+    for kw in career_rules["seniority"].get("too_senior_title_keywords", []):
+        if re.search(rf"\b{re.escape(kw.lower())}\b", title_lower):
+            reasons.append(f"too senior for {career_rules['experience']['total_years']}y experience: '{kw}' in title")
+            break
+
+    # --- Years-of-experience gate (regex over the JD, zero tokens) ---
+    exp_cfg = career_rules["experience"]
+    years_req = extract_required_years(job.description)
+    min_years = years_req.min_years if years_req else None
+    if years_req:
+        if years_req.min_years > exp_cfg["max_required_years"]:
+            reasons.append(
+                f"asks {years_req.min_years}+ yrs (you have ~{exp_cfg['total_years']}): \"{years_req.evidence[:70]}\""
+            )
+        elif years_req.max_years is not None and years_req.max_years <= exp_cfg["junior_cap_years"]:
+            reasons.append(f"junior-level ask ({years_req.min_years}-{years_req.max_years} yrs)")
+
     # --- Hard exclusions: title + description ---
     for kw in career_rules["hard_exclusions"]["title_keywords"]:
         if kw.lower() in title_lower:
@@ -141,9 +167,22 @@ def apply_filters(job: NormalizedJob, career_rules: dict, roles_config: dict) ->
     if not title_family_match and score == 0:
         reasons.append("no title-family match and no keyword signal")
 
+    # --- Title must carry an AI/ML/data signal (or a role-family alias) ---
+    # Generic "Software Engineer - Backend/Infra/Search" rows only survived
+    # before because AI companies repeat AI vocabulary in every posting's
+    # boilerplate; the title is the reliable signal.
+    signals = career_rules.get("title_signals", {})
+    if signals:
+        if _has_any(signals.get("reject_if_any", []), title_lower):
+            reasons.append("title is a non-engineering data/analyst role")
+        elif not title_family_match and not _has_any(signals.get("require_any", []), title_lower):
+            reasons.append("title has no AI/ML/data signal (generic engineering role)")
+
     return FilterResult(
         passed=len(reasons) == 0,
         reasons=reasons,
         matched_keywords=matched,
         keyword_score=score,
+        min_years_required=min_years,
+        years_evidence=years_req.evidence if years_req else "",
     )

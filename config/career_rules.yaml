@@ -73,7 +73,7 @@ location:
 
 recency:
   # Jobs older than this are hard-excluded at Stage 0. Configurable, not hardcoded.
-  max_age_days: 14
+  max_age_days: 30
 
 seniority:
   hard_exclude_keywords:
@@ -84,6 +84,76 @@ seniority:
     - "entry level"
     - "entry-level"
     - "apprentice"
+  # Levels that in practice demand 8+ years and/or people-org ownership —
+  # far above the candidate's experience (see experience: below). Matched as
+  # whole words in the TITLE only.
+  too_senior_title_keywords:
+    - "director"
+    - "vice president"
+    - "vp"
+    - "head of"
+    - "principal"
+    - "staff"
+    - "distinguished"
+    - "fellow"
+    - "chief"
+
+# Years-of-experience gate. Deterministic (regex over the JD, zero tokens):
+# a JD that asks for far more years than the candidate has is a long shot, so
+# it never reaches the AI or Notion. Candidate has ~3 years (Dec 2023 onward
+# plus short 2019-2020 stints, per resume) — update total_years when that
+# changes; the rest is config, not code.
+experience:
+  total_years: 3
+  # Exclude when the JD's stated minimum exceeds this. 6 = "6+ years" still
+  # reaches the AI (startups often flex); 7+ is excluded.
+  max_required_years: 6
+  # Exclude when the JD's stated MAXIMUM is at or below this ("0-2 years",
+  # "up to 2 years") — junior roles for someone already leading a team.
+  junior_cap_years: 2
+
+# Title must carry an AI/ML/data signal (whole-word regexes, case-insensitive)
+# OR match a role-family alias in roles.yaml. This is what stops generic
+# "Senior Software Engineer - Backend/Infra/Search" postings that only got
+# through on AI-company boilerplate keywords.
+title_signals:
+  require_any:
+    - '\bai\b'
+    - '\bml\b'
+    - 'machine learning'
+    - 'deep learning'
+    - '\bllm'
+    - 'gen ?ai'
+    - 'generative'
+    - '\bnlp\b'
+    - 'computer vision'
+    - '\bdata\b'
+    - 'mlops'
+    - 'agent'
+    - 'applied scientist'
+    - 'research engineer'
+    - 'research scientist'
+    - 'inference'
+    - '\brag\b'
+    - 'retrieval'
+    - 'analytics engineer'
+  reject_if_any:
+    - 'data center'
+    - 'data entry'
+    - 'analyst'
+    - 'data governance'
+    - 'data protection'
+
+# Stage 1/3 write gates: a job is written to Notion only if the AI says it's
+# at least this good a fit. Order: strong > plausible > weak > no.
+ai_gates:
+  allowed_role_types:
+    - ai_ml_engineering
+    - data_engineering
+  min_classifier_fit: plausible
+  min_match_fit: plausible
+  # Safety cap on deep-match calls per run (Stage 3 is the pricier call).
+  max_deep_matches_per_run: 60
 
 hard_exclusions:
   title_keywords:

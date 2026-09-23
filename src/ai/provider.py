@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from src.config import load_models
 from src.jobs.schemas import AIUsageRecord
@@ -29,6 +31,20 @@ class LLMProvider:
         self.base_url = cfg["base_url"].rstrip("/")
         self.api_key = os.environ.get(cfg["api_key_env"], "")
         self.provider_name = cfg["name"]
+        # Classification runs concurrently; retry 429s/5xx with backoff rather
+        # than failing a job over a transient rate-limit.
+        self.session = requests.Session()
+        self.session.mount(
+            "https://",
+            HTTPAdapter(
+                max_retries=Retry(
+                    total=3,
+                    backoff_factor=1.5,
+                    status_forcelist=[429, 500, 502, 503, 504],
+                    allowed_methods=["POST"],
+                )
+            ),
+        )
 
     def _chat(
         self,
@@ -47,7 +63,7 @@ class LLMProvider:
         cost_usd = 0.0
         content = "{}"
         try:
-            resp = requests.post(
+            resp = self.session.post(
                 f"{self.base_url}/chat/completions",
                 headers={"Authorization": f"Bearer {self.api_key}"},
                 json={

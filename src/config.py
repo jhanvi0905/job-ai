@@ -31,3 +31,7 @@ def load_career_rules() -> dict:
 
 def load_models() -> dict:
     return load_yaml("models.yaml")
+
+
+def load_candidate_profile() -> dict:
+    return load_yaml("candidate_profile.yaml")

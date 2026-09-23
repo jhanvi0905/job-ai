@@ -56,10 +56,20 @@ class NormalizedJob(BaseModel):
 
 
 class JobClassification(BaseModel):
-    """Stage 1 cheap-AI triage result. Schema-validated LLM output."""
+    """Stage 1 cheap-AI triage result. Schema-validated LLM output.
+
+    `relevant` is NOT taken on trust from the model: the classifier derives it
+    from role_type + fit + hard_blocker against config/career_rules.yaml
+    (ai_gates), so the model can't wave through a marketing role by calling it
+    "relevant"."""
 
     role_family: Optional[str] = None
+    # Normalised vocabulary (see prompts/classify_job_v2.txt), not free text.
     seniority: Optional[str] = None
+    role_type: Optional[str] = None
+    fit: Optional[Literal["strong", "plausible", "weak", "no"]] = None
+    min_years_required: Optional[int] = None
+    why: Optional[str] = None
     relevant: bool
     hard_blocker: bool = False
     hard_blocker_reason: Optional[str] = None

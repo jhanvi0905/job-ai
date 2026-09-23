@@ -45,7 +45,9 @@ class GreenhouseSource(JobSource):
             location=location,
             description_html=item.get("content"),
             absolute_url=item.get("absolute_url"),
-            updated_at=item.get("updated_at"),
+            # first_published is the real posting date; updated_at moves
+            # whenever anyone edits the req, which made old jobs look new.
+            updated_at=item.get("first_published") or item.get("updated_at"),
             metadata={
                 "departments": [d.get("name") for d in item.get("departments", [])],
                 "offices": [o.get("name") for o in item.get("offices", [])],

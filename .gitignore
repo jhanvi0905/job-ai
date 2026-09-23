@@ -6,3 +6,4 @@ data/ai_usage.jsonl
 .pytest_cache/
 *.egg-info/
 logs/
+data/decisions.jsonl

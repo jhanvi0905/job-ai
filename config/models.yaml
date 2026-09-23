@@ -23,13 +23,13 @@ routing:
     # Cheapest capable model with reliable structured-output / tool-calling.
     # Placeholder slug — confirm via scripts/verify_models.py before use.
     model: "gpt-4o-mini"
-    max_output_tokens: 250
+    max_output_tokens: 350
     temperature: 0
 
   analyse_match:
     # Stronger model — only invoked for the small Stage-1 survivor set.
     model: "gpt-4o-mini"
-    max_output_tokens: 600
+    max_output_tokens: 700
     temperature: 0
 
 # Future stages (not built in MVP, kept here so routing stays config-driven

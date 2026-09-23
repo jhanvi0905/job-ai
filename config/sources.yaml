@@ -220,49 +220,107 @@ companies:
       type: greenhouse
       identifier: planetscale
 
-  # --- Himalayas: a cross-company remote-job AGGREGATOR, not one board per
-  # company (unlike everything above). Each entry here is a search query
-  # (country/worldwide + keyword), verified live 2026-09-22 to return real,
-  # India-eligible AI/ML roles that none of the single-company boards above
-  # were surfacing (e.g. "AI Platform Engineer" at Granicus, explicitly
-  # India-eligible). Confirmed limitation: the API's pagination is broken on
-  # /search (offset is silently ignored), so each query only reliably
-  # returns its first ~20 results — multiple targeted queries compensate.
-  - name: "Himalayas: India · AI Engineer"
+  # Himalayas: a cross-company remote-job AGGREGATOR (each entry is a search,
+  # not a company). `sort=recent` makes every query return the 20 NEWEST
+  # postings, so a daily run sees what was posted since yesterday — the API's
+  # pagination is broken (offset ignored), so "newest 20 per query, many
+  # queries" is the way to get breadth. Stage 0 filtering is free, so wide
+  # queries cost nothing; only survivors reach the AI.
+  - name: "Himalayas: India · AI engineer"
     priority: A
     source:
       type: himalayas
-      identifier: "country=IN&q=AI+engineer"
+      identifier: "country=IN&q=AI+engineer&sort=recent"
 
   - name: "Himalayas: India · Machine Learning Engineer"
     priority: A
     source:
       type: himalayas
-      identifier: "country=IN&q=machine+learning+engineer"
+      identifier: "country=IN&q=machine+learning+engineer&sort=recent"
+
+  - name: "Himalayas: India · LLM"
+    priority: A
+    source:
+      type: himalayas
+      identifier: "country=IN&q=LLM&sort=recent"
+
+  - name: "Himalayas: India · RAG"
+    priority: B
+    source:
+      type: himalayas
+      identifier: "country=IN&q=RAG&sort=recent"
+
+  - name: "Himalayas: India · Generative AI"
+    priority: A
+    source:
+      type: himalayas
+      identifier: "country=IN&q=generative+AI&sort=recent"
+
+  - name: "Himalayas: India · AI Agent"
+    priority: A
+    source:
+      type: himalayas
+      identifier: "country=IN&q=AI+agent&sort=recent"
+
+  - name: "Himalayas: India · MLOps"
+    priority: B
+    source:
+      type: himalayas
+      identifier: "country=IN&q=MLOps&sort=recent"
+
+  - name: "Himalayas: India · NLP"
+    priority: B
+    source:
+      type: himalayas
+      identifier: "country=IN&q=NLP&sort=recent"
 
   - name: "Himalayas: India · Data Engineer"
     priority: B
     source:
       type: himalayas
-      identifier: "country=IN&q=data+engineer"
+      identifier: "country=IN&q=data+engineer&sort=recent"
 
   - name: "Himalayas: Worldwide · AI Engineer"
     priority: A
     source:
       type: himalayas
-      identifier: "worldwide=true&q=AI+engineer"
+      identifier: "worldwide=true&q=AI+engineer&sort=recent"
 
   - name: "Himalayas: Worldwide · Machine Learning Engineer"
     priority: A
     source:
       type: himalayas
-      identifier: "worldwide=true&q=machine+learning+engineer"
+      identifier: "worldwide=true&q=machine+learning+engineer&sort=recent"
 
-  - name: "Himalayas: Worldwide · LLM Engineer"
+  - name: "Himalayas: Worldwide · LLM"
+    priority: A
+    source:
+      type: himalayas
+      identifier: "worldwide=true&q=LLM&sort=recent"
+
+  - name: "Himalayas: Worldwide · Generative AI"
     priority: B
     source:
       type: himalayas
-      identifier: "worldwide=true&q=LLM+engineer"
+      identifier: "worldwide=true&q=generative+AI&sort=recent"
+
+  - name: "Himalayas: Worldwide · AI Agent"
+    priority: B
+    source:
+      type: himalayas
+      identifier: "worldwide=true&q=AI+agent&sort=recent"
+
+  - name: "Himalayas: Worldwide · MLOps"
+    priority: B
+    source:
+      type: himalayas
+      identifier: "worldwide=true&q=MLOps&sort=recent"
+
+  - name: "Himalayas: Worldwide · Data Engineer"
+    priority: B
+    source:
+      type: himalayas
+      identifier: "worldwide=true&q=data+engineer&sort=recent"
 
 # No SmartRecruiters seed yet — AI-native companies rarely publish there. The
 # adapter (src/sources/smartrecruiters.py) exists and works; add an identifier

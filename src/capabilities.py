@@ -6,29 +6,30 @@ None of it loops, decides its own next step, or calls itself — it's not an
 agent, it's a small set of capabilities an agent (or a human, or a cron job)
 can call.
 
-Only analyse_job() spends AI tokens, and only for the one job you name.
+discover_jobs() spends AI tokens only on jobs that survive the free Stage-0
+filters; analyse_job() spends them on the one job you name.
 """
 from __future__ import annotations
-
-from datetime import date
 
 from src.achievements.retrieval import retrieve_achievements
 from src.ai.classifier import classify_job
 from src.ai.matcher import analyse_match
-from src.ai.role_labels import ROLE_FAMILY_LABELS
+from src.integrations.job_record import evaluation_properties
 from src.integrations.notion import NotionClient
 from src.jobs.refetch import refetch_job
 from src.jobs.schemas import JobMatch
 from src.telemetry.logging import RunSummary
 from src.workflows.process_job import run as _run_discovery
 
-_RECOMMENDED_ACTION_TO_STATUS = {"review": "Shortlisted", "watch": "Watch", "reject": "Rejected"}
+# "review" leaves Status alone (a reviewed-worthy job is already "Discovered"
+# and the user may have moved it since); only watch/reject change it.
+_RECOMMENDED_ACTION_TO_STATUS = {"watch": "Watch", "reject": "Rejected"}
 
 
 def discover_jobs() -> RunSummary:
-    """Fetch every configured source, dedupe against Notion, deterministically
-    filter, and write survivors to Notion as 'Discovered'. Zero AI calls —
-    safe to run as often as you like."""
+    """Fetch every configured source, filter and dedupe for free, have the AI
+    vet what's left (triage + match against your achievements), and write only
+    the jobs it approves to Notion as 'Discovered'."""
     return _run_discovery()
 
 
@@ -46,24 +47,13 @@ def analyse_job(job_fingerprint: str) -> JobMatch:
 
     classification = classify_job(job)
     achievements = retrieve_achievements(classification.role_family, classification.key_requirements)
-    match = analyse_match(job, classification.key_requirements, achievements)
-
-    notion.update_job_page(
-        page["notion_page_id"],
-        {
-            "Role Family": ROLE_FAMILY_LABELS.get(classification.role_family),
-            "Seniority": classification.seniority,
-            "Fit Band": match.fit_band.capitalize(),
-            "Priority": match.priority,
-            "Matched Achievements": ", ".join(a.id for a in match.matched_achievements),
-            "Strong Evidence": "; ".join(match.strong_evidence),
-            "Partial Evidence": "; ".join(match.partial_evidence),
-            "Gaps": "; ".join(match.gaps),
-            "Why It Fits": match.reason,
-            "Status": _RECOMMENDED_ACTION_TO_STATUS.get(match.recommended_action, "Shortlisted"),
-            "Last Analysed": date.today().isoformat(),
-        },
+    match = analyse_match(
+        job, classification.key_requirements, achievements, classification=classification
     )
+
+    properties = evaluation_properties(classification, match)
+    properties["Status"] = _RECOMMENDED_ACTION_TO_STATUS.get(match.recommended_action)
+    notion.update_job_page(page["notion_page_id"], properties)
     return match
 
 

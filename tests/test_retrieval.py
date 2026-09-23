@@ -24,3 +24,14 @@ def test_retrieval_respects_top_k():
         top_k=2,
     )
     assert len(results) <= 2
+
+
+def test_data_platform_evidence_is_now_retrievable_for_data_roles():
+    results = retrieve_achievements("RF03", ["Kafka streaming pipelines", "BigQuery", "dbt"])
+    assert results and results[0].id == "A08"
+    assert "RisingWave" in results[0].summary
+
+
+def test_matcher_never_receives_an_empty_evidence_set_for_a_known_family():
+    results = retrieve_achievements("RF02", ["quantum widgets"])
+    assert len(results) >= 3 and all(r.summary for r in results)

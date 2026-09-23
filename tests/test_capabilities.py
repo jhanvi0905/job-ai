@@ -57,7 +57,7 @@ def test_analyse_job_writes_match_back_to_notion():
         page_id, properties = mock_notion.update_job_page.call_args[0]
         assert page_id == "page-abc"
         assert properties["Role Family"] == "RF01 - Senior/Lead AI Engineer"
-        assert properties["Status"] == "Shortlisted"  # recommended_action "review" maps here
+        assert properties["Status"] is None  # "review" leaves Status untouched
         assert properties["Fit Band"] == "Strong"
 
 

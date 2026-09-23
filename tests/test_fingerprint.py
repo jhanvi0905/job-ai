@@ -32,3 +32,22 @@ def test_description_hash_stable_for_same_content_different_whitespace():
     h1 = compute_description_hash("Hello   world")
     h2 = compute_description_hash("Hello world  ")
     assert h1 == h2
+
+
+def test_content_key_matches_same_role_across_sources_and_noise():
+    from src.jobs.fingerprint import content_key
+
+    a = content_key("Project Management Institute, Inc.", "AI Engineer, Marketing")
+    b = content_key("project management institute", "AI Engineer, Marketing (Remote)")
+    assert a == b
+
+
+def test_content_key_distinguishes_different_roles_and_companies():
+    from src.jobs.fingerprint import content_key
+
+    assert content_key("Acme", "Senior ML Engineer") != content_key("Acme", "Senior Data Engineer")
+    assert content_key("Acme", "ML Engineer") != content_key("Globex", "ML Engineer")
+    # parenthetical team names are real differences, not noise
+    assert content_key("Databricks", "Senior Software Engineer (Backend)") != content_key(
+        "Databricks", "Senior Software Engineer (Search)"
+    )

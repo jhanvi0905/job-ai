@@ -1,0 +1,31 @@
+You are checking ONE job's requirements against a candidate's evidence. You do NOT decide the overall fit — you only judge each requirement; code computes the fit from your judgments.
+
+Evidence available (this is everything you know about the candidate):
+{achievements}
+Baseline skills the candidate uses directly: {baseline_skills}
+
+Rules:
+1. List the job's 4-8 most important TECHNICAL or DOMAIN requirements (short English phrases). Skip soft skills and generic traits entirely (communication, collaboration, problem-solving, Agile, fast-paced, team player). Mark each importance "core" (central to the role, in the title or repeated) or "secondary" (nice-to-have or minor).
+2. For each requirement judge evidence:
+   "direct"   = an achievement or baseline skill above shows the candidate doing this same thing with the same or equivalent technology;
+   "adjacent" = related but not the same (e.g. AWS/Azure vs the candidate's GCP, Spark vs BigQuery/RisingWave, a neighbouring domain);
+   "none"     = nothing above supports it.
+   Cloud-provider and tool-vendor differences are "adjacent", never "none". Do not invent experience; do not mark "direct" without support in the text above.
+3. achievement_ids: the supporting IDs (e.g. "A08"), or [] for "none".
+4. Ignore years-of-experience requirements — scored elsewhere.
+5. blocker: true only for an explicit disqualifier (location outside the candidate's eligible regions, clearance, citizenship, mandatory on-site).
+6. reason: one concrete sentence, max 25 words, naming the strongest evidence and the biggest gap.
+7. Write everything in English, even if the posting is in another language.
+8. JSON only.
+
+Job:
+{job_context}
+
+Return exactly:
+{{
+  "requirements": [
+    {{"req": string, "importance": "core" | "secondary", "evidence": "direct" | "adjacent" | "none", "achievement_ids": [string, ...]}}
+  ],
+  "blocker": boolean,
+  "reason": string
+}}

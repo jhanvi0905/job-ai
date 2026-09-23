@@ -1,133 +1,113 @@
 # LifeOS Job Agent
 
-Discovers relevant SaaS/AI job openings, filters and matches them against
-Jhanvi's Master Achievement Bank, and writes only useful opportunities into
-the existing Notion **Job Pipeline** database (`Jhanvi — Life OS / Domains /
-Job Search`). Full product spec: see the PRD this repo was built from.
+Finds remote AI/ML/data engineering jobs you can work from India, has an AI
+vet each one against your real achievements, and writes **only the ones worth
+your time** into the Notion **Job Pipeline** (`Life OS / Domains / Job Search`).
+Review them in the **Jobs to Review** view.
 
-## Status: Phase 1 complete (of 5)
+## How a job gets into your queue
 
-| Phase | What it does | Status |
-|---|---|---|
-| 0 — Inspect | Read existing Notion schema, achievement bank, propose schema diff | ✅ done (diff applied to Notion) |
-| 1 — One source end-to-end | Greenhouse fetch → normalize → dedupe → deterministic filter → Notion, no AI | ✅ done, tested |
-| 2 — AI classification | Cheap triage (relevant / role family / hard blockers) | ✅ built, callable via `analyse_job()`, not yet run against real models |
-| 3 — Achievement matching | Deterministic retrieval + deep match, evidence + gaps into Notion | ✅ built, callable via `analyse_job()`, not yet run against real models |
-| 4 — More sources | Lever, SmartRecruiters | ✅ adapters built, Lever seeded (Anyscale); SmartRecruiters has no seed yet |
-| 5 — Scheduling | Daily automated run | ✅ GitHub Actions workflow ready, disabled until secrets are set |
+```
+49 sources ──► Stage 0: free, offline filters ──► dedup ──► Stage 1: AI triage ──► Stage 3: AI match ──► Notion
+(ATS boards +   remote & India-eligible            by ID and   role type + stack       per-requirement        only approved
+ Himalayas       posted ≤ 30 days                  by company  fit; can't wave         evidence check,        jobs, ranked
+ newest-first)   years ask ≤ 6 (regex)             + title     through non-eng         fit computed in code   P1/P2
+                 not Director/Staff/Principal
+                 title has an AI/ML/data signal
+```
 
-Phase 2/3 code is built and callable (`analyse_job()`, see below) but is
-**not** part of the automatic `discover_jobs()` batch flow — per the spec's
-own phasing (PRD §48 Rule 4 / §45 kill-criteria mindset), batch AI spend
-should only turn on once you've run `scripts/verify_models.py` against your
-real AI/ML API models. Until then, `analyse_job()` lets you test Stage 1-3
-against one real job at a time without touching the daily discovery run.
+* **Nothing is written to Notion unless the AI approves it.** If the AI is
+  unreachable a job is skipped and retried next run — never written unvetted.
+* **Years are code, not vibes.** Regex extracts what a posting asks for; the
+  fit is capped by rule (asks within 1 yr of yours: no penalty; +2-3: at most
+  plausible; +4: at most weak; 7+ never reaches the AI). The LLM never sees
+  your years — it applied them inconsistently.
+* **Fit is arithmetic.** The model only says, per requirement, whether your
+  evidence is direct / adjacent / none. Code computes the band, priority and
+  gaps from that. Final band = the lower of Stage 1 and Stage 3.
+* **Duplicates:** one bulk Notion read builds in-memory indexes; a job is a
+  duplicate if the ID matches *or* the company+title matches (same role via
+  another source, or re-posted). Pages you've moved past "Discovered" are never
+  touched.
+* **Zero repeat spend:** a rejected, unchanged posting is remembered locally
+  (`data/decisions.jsonl`) and costs 0 tokens. The memory self-invalidates when
+  your profile, gates, prompts or models change.
+* A typical daily run: ~1 min, ~$0.02.
+
+## Commands
+
+```bash
+python scripts/sync_jobs.py             # the daily run (cron does this at 8am)
+python scripts/sync_jobs.py --dry-run   # preview: what would be written / rejected and why
+python scripts/rebuild_queue.py         # re-judge the whole existing queue under current rules (plan only)
+python scripts/rebuild_queue.py --apply # execute that plan; trash is recoverable, only untouched automation pages
+python scripts/verify_models.py         # confirm the configured AI models work
+python -m pytest                        # 96 tests
+```
+
+## Tuning it (all config, no code)
+
+| I want to… | Edit |
+|---|---|
+| Change my years / seniority cutoffs / recency | `config/career_rules.yaml` → `experience:`, `seniority:`, `recency:` |
+| Target another country (e.g. Canada) | `career_rules.yaml` → `location.candidate_country` |
+| Allow on-site/hybrid again | `career_rules.yaml` → `location.allowed_workplace_types` |
+| Be stricter/looser on what the AI lets through | `career_rules.yaml` → `ai_gates` |
+| Add a company | `config/sources.yaml` (Greenhouse / Lever / Ashby / SmartRecruiters token) |
+| Add a Himalayas search | `config/sources.yaml` (`type: himalayas`, `identifier: "country=IN&q=...&sort=recent"`) |
+| Update who I am to the AI | `config/candidate_profile.yaml` (summary + baseline skills) |
+| Add a new achievement | `data/achievements_index.yaml` (mirrors the Master Achievement Bank, A01-A10 today) |
+| Swap the AI provider/model | `config/models.yaml` (any OpenAI-compatible endpoint) |
+
+## What the Notion columns mean
+
+Populated by the pipeline: **Opportunity** (title — company), **Priority**
+(P1 strong / P2 plausible), **Fit Band**, **Role Family** (RF01-RF04),
+**Seniority** (fixed vocabulary), **Work Mode**, **Location**, **Date Posted**
+(true first-published date), **Why It Fits** (one sentence), **Gaps** (only
+requirements the AI found unsupported, plus any years shortfall),
+**Matched Achievements**, **Strong/Partial Evidence**, **Source Channel**
+(Company Careers vs Other for aggregators), **Job URL**.
+Internal (hidden in the review view): Job Fingerprint, JD Hash, External Key,
+Last Checked/Analysed. Yours to use: Status, Notes, Contact, Resume Version,
+Applied Date, Next Follow-up, Tasks.
 
 ## Setup
 
 ```bash
-cd lifeos-job-agent
-python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
+python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+cp .env.example .env   # NOTION_API_KEY (integration shared with the Job Pipeline DB), AIMLAPI_KEY
 ```
 
-1. **Notion**: create an internal integration at notion.so/my-integrations,
-   copy its secret into `.env` as `NOTION_API_KEY`. Then open the **Job
-   Pipeline** database in Notion → `•••` menu → Connections → add your new
-   integration. Without this share step, API calls will 404.
-2. **AI/ML API** (only needed once you enable Phase 2/3): put your key in
-   `.env` as `AIMLAPI_KEY`, then run `python scripts/verify_models.py` — it
-   sends one trivial request per configured model in `config/models.yaml`
-   and tells you if the model slug is real before anything spends tokens on
-   real job postings. The placeholder model names in `models.yaml` are NOT
-   verified — check your AI/ML API dashboard and update them first.
+Scheduling: local cron runs `scripts/sync_jobs.py` daily at 8:00 (Mac must be
+awake). A GitHub Actions workflow is included but needs you to push the repo
+and add the three secrets yourself.
 
-## Running it
+## Layout
 
-```bash
-python scripts/sync_jobs.py
+```
+config/    career_rules · candidate_profile · roles · sources · models  (behaviour lives here)
+prompts/   classify_job_v2 · analyse_match_v3   (versioned; changes invalidate the rejection memory)
+data/      achievements_index.yaml · decisions.jsonl (local, gitignored) · ai_usage.jsonl
+src/
+  sources/       one adapter per ATS + Himalayas aggregator
+  jobs/          normalize · filters (Stage 0) · experience (years regex) · fingerprint/content_key · decisions
+  ai/            provider · classifier (Stage 1) · matcher (Stage 3, scored in code)
+  achievements/  deterministic retrieval over the compact index
+  integrations/  notion (bulk read, archive) · job_record (columns ↔ meaning)
+  workflows/     process_job (the pipeline)
+  capabilities.py  discover_jobs / analyse_job / get_priority_jobs  (callable by a future LifeOS agent)
 ```
 
-Prints a run summary (fetched / duplicates / filtered / written / errors —
-PRD §36 format) and exits non-zero if any single source failed (other
-sources still complete — see PRD §33).
+## Known limits (honest)
 
-## Scheduling (PRD §41 Phase 5)
-
-**Recommendation: GitHub Actions**, not a local cron job. Reasoning, since
-you asked for it to be reasoned through rather than assumed:
-
-- **$0 recurring cost** either way, but a laptop-based cron only fires jobs
-  discovered while your machine happens to be on — silently degrading the
-  "check daily" guarantee the PRD promises without you noticing on ordinary
-  self-employed/remote workdays where the laptop sleeps.
-- GitHub Actions' free tier easily covers one ~1-2 minute job a day (2,000
-  free minutes/month on a private repo; this repo can also just be public).
-- Secrets management is built in (repo → Settings → Secrets → Actions) — no
-  extra service to trust with your Notion/AI keys, unlike Activepieces.
-- The workflow file (`.github/workflows/sync-jobs.yml`) is already committed
-  and disabled-by-default in effect (it just won't fire until you push the
-  repo to GitHub and add the three secrets: `NOTION_API_KEY`,
-  `NOTION_JOB_PIPELINE_DB_ID`, `AIMLAPI_KEY`).
-- You can still run `python scripts/sync_jobs.py` locally any time — nothing
-  about the code depends on GitHub Actions specifically; it's a thin
-  scheduler on top of the same entrypoint.
-
-If you'd rather not push this to GitHub at all, `crontab -e` with a line like
-`0 8 * * * cd ~/lifeos-job-agent && .venv/bin/python scripts/sync_jobs.py >> logs/cron.log 2>&1`
-works identically — just less resilient to your laptop being asleep at 8am.
-
-## Callable capabilities (`src/capabilities.py`)
-
-Per PRD §25, three plain functions a future LifeOS master assistant can call
-later — through MCP, an HTTP handler, a LangChain/LangGraph tool wrapper,
-whatever transport shows up eventually. Nothing here is itself an agent: no
-loop, no self-directed tool selection, just typed functions.
-
-```python
-from src.capabilities import discover_jobs, analyse_job, get_priority_jobs
-
-discover_jobs()                          # Phase 1, zero AI calls, safe to run often
-analyse_job("greenhouse:4123456")        # Stage 1+2+3 for ONE job, spends AI tokens, writes back to Notion
-get_priority_jobs(limit=15)              # read-only "Jobs to Review" queue, Priority then Date Posted
-```
-
-`analyse_job` re-fetches the job's full description from its origin ATS
-(`src/jobs/refetch.py`) rather than reading it back from Notion — Notion only
-stores a `JD Hash` for change-detection, not the full text (PRD §5 rules out
-a second duplicate-storage system, and JDs regularly exceed Notion's
-rich_text limits anyway). This means `analyse_job` only works for jobs still
-live on the source board; a closed posting raises `JobNotFoundError`.
-
-## Extending
-
-- **New source**: implement `JobSource.fetch_jobs()` (see `src/sources/greenhouse.py`),
-  register it in `SOURCE_TYPES` in `src/workflows/process_job.py`, add companies to `config/sources.yaml`.
-  Nothing downstream changes (PRD §10.2 / Phase 4 acceptance criterion).
-- **New company**: just add a row to `config/sources.yaml` — no code change.
-- **Tune filtering**: edit `config/career_rules.yaml` / `config/roles.yaml` — no code change.
-- **Enable Phase 2/3**: wire `classify_job()` / `retrieve_achievements()` / `analyse_match()`
-  into `run()` in `src/workflows/process_job.py` at the marked seam, and extend
-  `write_to_notion()` to populate Role Family / Fit Band / evidence / gaps
-  instead of the bare Stage-0 record.
-- **New frozen achievement**: add an entry to `data/achievements_index.yaml`
-  by hand after freezing it in the canonical docx — this file is deliberately
-  not auto-parsed from the docx (PRD §7: never derive automation from an
-  evolving canonical document without a human review step).
-
-## Notion schema
-
-The Job Pipeline database was extended (not duplicated) with: `Job
-Fingerprint`, `Date Posted`, `Last Checked`, `Role Family`, `Seniority`, `Fit
-Band`, `Matched Achievements`, `Strong Evidence`, `Partial Evidence`, `Gaps`,
-`Why It Fits`, `JD Hash`, `Last Analysed`, plus a `Watch` option added to the
-existing `Status` select. Everything else (`Opportunity`, `Company`, `Role`,
-`Status`, `Priority`, `Source`, `Work Mode`, `Domain`, `Tasks`, ...) is
-reused as-is.
-
-`Matched Achievements` is stored as plain achievement-ID text (e.g. `A01,
-A03`) for now, per PRD §22 — the Master Achievement Bank isn't a Notion
-database yet. If it ever becomes one, swap that column for a real Notion
-relation; `src/ai/matcher.py` already returns achievement IDs in a shape
-that maps directly onto a relation.
+* Priority is a soft ranking: `gpt-4o-mini` is generous, so P1 is not rare.
+  Tighten `ai_gates` or switch `analyse_match` to a stronger model in
+  `models.yaml` if you want sharper separation.
+* Himalayas' pagination is broken (returns page 1 regardless of offset), so
+  breadth comes from many `sort=recent` queries, not deep paging.
+* Naukri/Instahyre/Wellfound/LinkedIn have no legitimate public API, so
+  India-specific boards aren't covered.
+* Location eligibility beyond the ATS metadata is read by the AI from the
+  posting text (it correctly caught "You are based in Europe or the Americas"
+  on postings tagged Worldwide) — a heuristic, not legal advice.

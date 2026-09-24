@@ -16,12 +16,16 @@ from dotenv import load_dotenv  # noqa: E402
 load_dotenv()
 
 from src.ai.provider import LLMProvider  # noqa: E402
+from src.ledger.db import Ledger  # noqa: E402
 from src.config import load_models  # noqa: E402
 
 
 def main() -> int:
     routing = load_models()["routing"]
-    provider = LLMProvider()
+    # Goes through the real gateway path (ledger + budget), capped at one cent.
+    ledger = Ledger()
+    run_id = ledger.start_run("verify_models", budget_usd=0.01)
+    provider = LLMProvider(ledger, run_id)
     if not provider.api_key:
         print("AIMLAPI_KEY is not set (check .env) — nothing to verify.")
         return 1
@@ -57,6 +61,11 @@ def main() -> int:
             )
             ok = False
 
+    ledger.finish_run(run_id, "ok" if ok else "failed")
+    for r in ledger.query("SELECT node, outcome, model_resolved, tokens_in, tokens_out, cost_usd, latency_ms FROM llm_calls WHERE run_id = ?", (run_id,)):
+        print(f"  ledger: {r}")
+    print(f"  total spent this check: ${ledger.spent_in_run(run_id):.6f}")
+    ledger.close()
     return 0 if ok else 1
 
 

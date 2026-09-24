@@ -31,7 +31,7 @@ def match(fit="strong", action="review") -> JobMatch:
 
 def ev(tmp_path, candidates, **patches):
     summary = RunSummary()
-    decisions = DecisionCache(path=tmp_path / "d.jsonl")
+    decisions = DecisionCache()
     with patch("src.workflows.process_job.classify_job", **patches.get("classify", {"return_value": cls()})), \
          patch("src.workflows.process_job.analyse_match", **patches.get("match", {"return_value": match()})), \
          patch("src.workflows.process_job.retrieve_achievements", return_value=[]):

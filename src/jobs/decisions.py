@@ -1,4 +1,9 @@
-"""Local memory of AI verdicts for jobs that were NOT written to Notion.
+"""Memory of AI verdicts, stored in the ledger's `verdicts` table (Phase 3).
+
+Formerly a decisions.jsonl file; the ledger gives us joins with events and
+human outcomes, and one place to back up. Rules below are unchanged.
+
+Why this exists: Notion only holds jobs worth reviewing.
 
 Notion only holds jobs worth reviewing (that's the whole point — no clutter),
 so a job the AI rejected leaves no trace there. Without a memory, that same
@@ -20,8 +25,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from src.config import CONFIG_DIR, load_career_rules, load_models
+from src.ledger.db import Ledger
 
-DECISIONS_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "decisions.jsonl"
+LEGACY_DECISIONS_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "decisions.jsonl"
 PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "prompts"
 MAX_AGE_DAYS = 30
 
@@ -42,25 +48,22 @@ def rules_signature() -> str:
 
 
 class DecisionCache:
-    def __init__(self, path: Path | None = None, persist: bool = True):
-        self.path = path if path is not None else DECISIONS_PATH
-        self.persist = persist
+    """In-memory view of the ledger's verdicts, with write-through when a ledger
+    is attached and `persist` is on. With no ledger it is purely in-memory
+    (tests, dry-runs of helper scripts)."""
+
+    def __init__(self, ledger: Ledger | None = None, run_id: str | None = None, persist: bool = True):
+        self.ledger = ledger
+        self.run_id = run_id
+        self.persist = persist and ledger is not None
         self.signature = rules_signature()
         self._by_fp: dict[str, dict] = {}
-        self._load()
-
-    def _load(self) -> None:
-        if not self.path.exists():
-            return
-        cutoff = datetime.now(timezone.utc) - timedelta(days=MAX_AGE_DAYS)
-        with self.path.open("r", encoding="utf-8") as f:
-            for line in f:
-                try:
-                    rec = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                if datetime.fromisoformat(rec["ts"]) >= cutoff:
-                    self._by_fp[rec["fp"]] = rec  # append-only, last write wins
+        if ledger is not None:
+            cutoff = (datetime.now(timezone.utc) - timedelta(days=MAX_AGE_DAYS)).isoformat()
+            for row in ledger.latest_verdicts(cutoff):
+                self._by_fp[row["fingerprint"]] = {
+                    "verdict": row["verdict"], "jd_hash": row["jd_hash"], "sig": row["rules_sig"],
+                }
 
     def is_known_rejection(self, fingerprint: str, description_hash: str) -> bool:
         rec = self._by_fp.get(fingerprint)
@@ -71,18 +74,46 @@ class DecisionCache:
             and rec["sig"] == self.signature
         )
 
-    def record_rejection(self, fingerprint: str, description_hash: str, reason: str) -> None:
-        rec = {
-            "fp": fingerprint,
-            "jd_hash": description_hash,
-            "verdict": "rejected",
-            "reason": reason[:200],
-            "sig": self.signature,
-            "ts": datetime.now(timezone.utc).isoformat(),
-        }
-        self._by_fp[fingerprint] = rec
-        if not self.persist:
-            return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(rec) + "\n")
+    def record_rejection(
+        self, fingerprint: str, description_hash: str, reason: str, *, node: str = "triage", code: str | None = None
+    ) -> None:
+        self._record("rejected", fingerprint, description_hash, node, code, reason)
+
+    def record_approval(
+        self, fingerprint: str, description_hash: str, *, fit_band: str | None, priority: str | None
+    ) -> None:
+        """Approvals are remembered too — not to skip work (a vetted job is
+        already in Notion, which the dedup index covers) but so the human's
+        later decision can be compared with what the system said."""
+        self._record("approved", fingerprint, description_hash, "match", "approved_match", None, fit_band, priority)
+
+    def _record(self, verdict, fp, jd_hash, node, code, reason, fit_band=None, priority=None) -> None:
+        self._by_fp[fp] = {"verdict": verdict, "jd_hash": jd_hash, "sig": self.signature}
+        if self.persist:
+            self.ledger.record_verdict(
+                fingerprint=fp, jd_hash=jd_hash, verdict=verdict, node=node, rules_sig=self.signature,
+                run_id=self.run_id, reason_code=code, reason=reason, fit_band=fit_band, priority=priority,
+            )
+
+
+def import_legacy_decisions(ledger: Ledger, path: Path | None = None) -> int:
+    """One-time, idempotent import of decisions.jsonl. Keeps each record's original
+    timestamp and rules signature, so still-valid rejections keep saving tokens."""
+    path = path if path is not None else LEGACY_DECISIONS_PATH
+    if not path.exists():
+        return 0
+    have = {(r["fingerprint"], r["created_at"]) for r in ledger.query("SELECT fingerprint, created_at FROM verdicts WHERE node='legacy'")}
+    n = 0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if (rec["fp"], rec["ts"]) in have:
+            continue
+        ledger.record_verdict(
+            fingerprint=rec["fp"], jd_hash=rec["jd_hash"], verdict="rejected", node="legacy",
+            rules_sig=rec["sig"], reason=rec.get("reason"), created_at=rec["ts"],
+        )
+        n += 1
+    return n

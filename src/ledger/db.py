@@ -23,7 +23,9 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from src.ledger.codes import CALL_OUTCOMES, DISPOSITIONS, NODE_REASONS, NODES, REASON_CODES, RUN_STATUSES, sql_in
+from src.ledger.codes import (
+    CALL_OUTCOMES, DISPOSITIONS, NODE_REASONS, NODES, REASON_CODES, RUN_STATUSES, VERDICT_NODES, VERDICTS, sql_in,
+)
 
 DEFAULT_LEDGER_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "ledger.db"
 
@@ -91,6 +93,34 @@ MIGRATIONS: dict[int, str] = {
         n            INTEGER NOT NULL CHECK (n >= 0),
         PRIMARY KEY (run_id, node, reason_code)
     );
+    """,
+    3: f"""
+    CREATE TABLE verdicts (
+        verdict_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id       TEXT REFERENCES runs(run_id),
+        fingerprint  TEXT NOT NULL,
+        jd_hash      TEXT NOT NULL,
+        verdict      TEXT NOT NULL CHECK (verdict IN ({sql_in(VERDICTS)})),
+        node         TEXT NOT NULL CHECK (node IN ({sql_in(VERDICT_NODES)})),
+        reason_code  TEXT,
+        reason       TEXT,
+        fit_band     TEXT,
+        priority     TEXT,
+        rules_sig    TEXT NOT NULL,
+        created_at   TEXT NOT NULL
+    );
+    CREATE INDEX idx_verdicts_fp ON verdicts(fingerprint, created_at);
+
+    CREATE TABLE human_outcomes (
+        outcome_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id         TEXT REFERENCES runs(run_id),
+        fingerprint    TEXT NOT NULL,
+        notion_page_id TEXT,
+        status         TEXT,
+        reject_reason  TEXT,
+        observed_at    TEXT NOT NULL
+    );
+    CREATE INDEX idx_outcomes_fp ON human_outcomes(fingerprint, observed_at);
     """,
 }
 
@@ -225,6 +255,49 @@ class Ledger:
                         " ON CONFLICT(run_id, node, reason_code) DO UPDATE SET n = n + excluded.n",
                         (run_id, node, code, int(n)),
                     )
+
+    # ---- verdict store (Phase 3) -------------------------------------------
+    def record_verdict(
+        self, *, fingerprint: str, jd_hash: str, verdict: str, node: str, rules_sig: str,
+        run_id: str | None = None, reason_code: str | None = None, reason: str | None = None,
+        fit_band: str | None = None, priority: str | None = None, created_at: str | None = None,
+    ) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO verdicts (run_id, fingerprint, jd_hash, verdict, node, reason_code, reason,"
+                " fit_band, priority, rules_sig, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                (run_id, fingerprint, jd_hash, verdict, node, reason_code, (reason or "")[:200] or None,
+                 fit_band, priority, rules_sig, created_at or _now()),
+            )
+
+    def latest_verdicts(self, since: str) -> list[dict]:
+        """Newest verdict per fingerprint since `since` (ISO timestamp)."""
+        return self.query(
+            "SELECT v.* FROM verdicts v JOIN (SELECT fingerprint, MAX(verdict_id) AS m FROM verdicts"
+            " WHERE created_at >= ? GROUP BY fingerprint) l ON l.m = v.verdict_id",
+            (since,),
+        )
+
+    # ---- human outcomes (Phase 3) ------------------------------------------
+    def record_human_outcome(
+        self, *, fingerprint: str, status: str | None, reject_reason: str | None,
+        notion_page_id: str | None = None, run_id: str | None = None,
+    ) -> bool:
+        """Append an observation ONLY if it differs from the latest one for this
+        fingerprint, so the table is a change history, not a daily snapshot."""
+        with self._lock:
+            last = self._conn.execute(
+                "SELECT status, reject_reason FROM human_outcomes WHERE fingerprint = ? ORDER BY outcome_id DESC LIMIT 1",
+                (fingerprint,),
+            ).fetchone()
+            if last and last["status"] == status and last["reject_reason"] == reject_reason:
+                return False
+            self._conn.execute(
+                "INSERT INTO human_outcomes (run_id, fingerprint, notion_page_id, status, reject_reason, observed_at)"
+                " VALUES (?,?,?,?,?,?)",
+                (run_id, fingerprint, notion_page_id, status, reject_reason, _now()),
+            )
+            return True
 
     # ---- budget queries (read by the gateway before every call) -----------
     def spent_in_run(self, run_id: str) -> float:

@@ -74,3 +74,18 @@ NODE_REASONS: dict[str, frozenset[str]] = {
     "write": frozenset({"written_new", "written_update", "notion_error"}),
 }
 REASON_CODES = frozenset().union(*NODE_REASONS.values())
+
+
+# ---------------------------------------------------------------------------
+# Verdict store + human feedback (Phase 3).
+# A verdict is the SYSTEM's judgement of an item under a specific rule set;
+# a human outcome is what YOU later did with it in Notion. Keeping them in
+# separate tables (joined on fingerprint) is what makes disagreement queryable.
+# ---------------------------------------------------------------------------
+VERDICTS = frozenset({"rejected", "approved"})
+VERDICT_NODES = frozenset({"triage", "match", "legacy"})  # legacy = imported from decisions.jsonl
+
+# Notion "Reject Reason" select values (optional; empty means no signal).
+HUMAN_REJECT_REASONS = frozenset(
+    {"wrong_role_type", "too_senior", "location", "company", "compensation", "other"}
+)

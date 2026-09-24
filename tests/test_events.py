@@ -3,7 +3,7 @@ import sqlite3
 import pytest
 
 from src.ledger.codes import DISPOSITIONS, NODE_REASONS, REASON_CODES
-from src.ledger.db import Ledger
+from src.ledger.db import MIGRATIONS, Ledger
 from src.ledger.events import NULL_EVENTS, Events
 
 
@@ -19,7 +19,7 @@ def test_migration_2_adds_event_tables_without_touching_phase_1_data(tmp_path):
     old.record_call(run_id=run, node="triage", attempt=1, model_requested="m", outcome="ok", cost_usd=0.01)
     old.close()
     new = Ledger(path)
-    assert new.schema_version() == 2
+    assert new.schema_version() == max(MIGRATIONS)
     assert new.spent_in_run(run) == pytest.approx(0.01)
     assert {"events", "funnel"} <= {r["name"] for r in new.query("SELECT name FROM sqlite_master WHERE type='table'")}
 

@@ -37,7 +37,8 @@ from src.integrations.notion import NotionClient
 from src.ledger.conservation import check_conservation
 from src.ledger.db import Ledger
 from src.ledger.events import NULL_EVENTS, Events
-from src.jobs.decisions import DecisionCache, rules_signature
+from src.ledger.feedback import sync_human_outcomes
+from src.jobs.decisions import DecisionCache, import_legacy_decisions, rules_signature
 from src.jobs.filters import apply_filters
 from src.jobs.fingerprint import content_key
 from src.jobs.normalize import normalize_job
@@ -264,8 +265,9 @@ def evaluate(
             summary.ai_rejected += 1
             reason = f"stage1 {verdict.role_type}/{verdict.fit}: {verdict.why}"
             summary.rejections.append(f"{cand.job.title} @ {cand.job.company_name} -> {reason}")
-            decisions.record_rejection(fp, cand.job.description_hash, reason)
-            events.item("triage", fp, "rejected", _triage_reject_code(verdict, gates), reason)
+            tcode = _triage_reject_code(verdict, gates)
+            decisions.record_rejection(fp, cand.job.description_hash, reason, node="triage", code=tcode)
+            events.item("triage", fp, "rejected", tcode, reason)
             continue
         events.item("triage", fp, "passed", "approved_triage")
         passed.append(cand)
@@ -315,11 +317,12 @@ def evaluate(
             summary.match_rejected += 1
             reason = f"stage3 {result.fit_band}: {result.reason}"
             summary.rejections.append(f"{cand.job.title} @ {cand.job.company_name} -> {reason}")
-            decisions.record_rejection(fp, cand.job.description_hash, reason)
             code = "rejected_blocked" if result.fit_band == "blocked" else "rejected_weak" if rank < min_rank else "rejected_action"
+            decisions.record_rejection(fp, cand.job.description_hash, reason, node="match", code=code)
             events.item("match", fp, "rejected", code, reason)
             continue
         cand.match = result
+        decisions.record_approval(fp, cand.job.description_hash, fit_band=result.fit_band, priority=result.priority)
         events.item("match", fp, "passed", "approved_match")
         summary.approvals.append(
             f"[{result.priority} {result.fit_band}] {cand.job.title} @ {cand.job.company_name}"
@@ -381,8 +384,15 @@ def run(dry_run: bool = False) -> RunSummary:
     try:
         notion = NotionClient()
         # One bulk read. If it fails we abort rather than risk writing duplicates.
-        index = DedupIndex(notion.list_all_pages())
-        decisions = DecisionCache(persist=not dry_run)
+        pages = notion.list_all_pages()
+        index = DedupIndex(pages)
+        if not dry_run:
+            try:  # feedback capture is best-effort: it must never fail a discovery run
+                sync_human_outcomes(ledger, pages, run_id)
+            except Exception:  # noqa: BLE001
+                logger.exception("human outcome sync failed")
+        import_legacy_decisions(ledger)  # no-op once imported
+        decisions = DecisionCache(ledger, run_id, persist=not dry_run)
 
         jobs = fetch_all(build_sources(), summary)
         events.funnel("fetch", {"normalized": len(jobs), "normalize_failed": max(0, summary.fetched - len(jobs))})

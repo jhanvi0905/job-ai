@@ -38,5 +38,5 @@ def _isolate_local_state(monkeypatch, tmp_path):
     """No test may read or write the real ledger / usage log / rejection memory."""
     monkeypatch.setattr("src.ledger.db.DEFAULT_LEDGER_PATH", tmp_path / "ledger.db")
     monkeypatch.setattr("src.telemetry.usage.USAGE_LOG_PATH", tmp_path / "ai_usage.jsonl")
-    monkeypatch.setattr("src.jobs.decisions.DECISIONS_PATH", tmp_path / "decisions.jsonl")
+    monkeypatch.setattr("src.jobs.decisions.LEGACY_DECISIONS_PATH", tmp_path / "decisions.jsonl")
     yield

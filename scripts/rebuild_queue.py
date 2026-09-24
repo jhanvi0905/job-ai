@@ -73,12 +73,12 @@ def plan() -> None:
         group.sort(key=lambda p: p.get("created_time") or "")
 
     # Only protected pages block duplicates; managed pages are being re-judged.
-    decisions = DecisionCache(persist=False)
+    ledger = Ledger()
+    decisions = DecisionCache(ledger, persist=False)  # reads remembered rejections, never writes
     candidates = stage0_filter_and_dedupe(
         fetch_all(build_sources(), summary), DedupIndex(protected), decisions, career_rules, roles, summary
     )
     print(f"{summary.fetched} fetched -> {len(candidates)} pass Stage 0 + dedup; evaluating with AI...")
-    ledger = Ledger()
     run_id = ledger.start_run("rebuild-plan", budget_usd=load_models().get("budget", {}).get("per_run_usd"))
     try:
         approved = evaluate(candidates, decisions, career_rules, summary, LLMProvider(ledger, run_id))

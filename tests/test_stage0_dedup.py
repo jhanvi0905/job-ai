@@ -1,5 +1,8 @@
 from src.config import load_career_rules, load_roles
 from src.jobs.decisions import DecisionCache
+from src.ledger.db import Ledger
+
+LEDGERS: dict = {}  # one in-memory ledger per test tmp_path, shared by caches that must 'reload'
 from src.jobs.schemas import NormalizedJob
 from src.telemetry.logging import RunSummary
 from src.workflows.process_job import DedupIndex, stage0_filter_and_dedupe
@@ -27,7 +30,7 @@ def make_job(**o) -> NormalizedJob:
 
 
 def cache(tmp_path) -> DecisionCache:
-    return DecisionCache(path=tmp_path / "decisions.jsonl")
+    return DecisionCache(LEDGERS.setdefault(tmp_path, Ledger.memory()))
 
 
 def run(jobs, pages, tmp_path):
@@ -94,7 +97,7 @@ def test_rejection_is_forgotten_when_the_description_changes(tmp_path):
 def test_rejection_is_forgotten_when_the_rules_change(tmp_path):
     c = cache(tmp_path)
     c.record_rejection("himalayas:1", "h1", "stage1 no")
-    c2 = DecisionCache(path=tmp_path / "decisions.jsonl")
+    c2 = DecisionCache(LEDGERS[tmp_path])
     c2.signature = "different-rules-signature"
     assert not c2.is_known_rejection("himalayas:1", "h1")
 

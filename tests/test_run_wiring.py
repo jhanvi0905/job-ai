@@ -5,14 +5,18 @@ import src.workflows.process_job as pj
 from src.ledger.db import Ledger
 
 
+PAGES: list[dict] = []
+
+
 class FakeNotion:
     def list_all_pages(self):
-        return []
+        return list(PAGES)
 
 
 @pytest.fixture
 def wired(monkeypatch):
     seen = {}
+    PAGES.clear()
     monkeypatch.setattr(pj, "NotionClient", FakeNotion)
     monkeypatch.setattr(pj, "build_sources", lambda: [])
     monkeypatch.setattr(pj, "fetch_all", lambda sources, summary: [])
@@ -80,3 +84,50 @@ def test_no_pipeline_function_will_build_its_own_unbudgeted_provider():
     for fn in (classify_job, analyse_match, pj.evaluate):
         param = inspect.signature(fn).parameters["provider"]
         assert param.default is inspect.Parameter.empty, f"{fn.__name__} must not default its provider"
+
+
+def outcomes():
+    ledger = Ledger()
+    rows = ledger.query("SELECT fingerprint, status FROM human_outcomes")
+    ledger.close()
+    return rows
+
+
+def test_a_live_run_captures_your_notion_decisions_for_free(wired):
+    PAGES.append({"Job Fingerprint": "greenhouse:1", "Status": "Applied", "Source": "Automation", "notion_page_id": "p1"})
+    wired["install"](lambda summary: [])
+    pj.run()
+    assert outcomes() == [{"fingerprint": "greenhouse:1", "status": "Applied"}]
+
+
+def test_a_dry_run_records_no_human_outcomes(wired):
+    PAGES.append({"Job Fingerprint": "greenhouse:1", "Status": "Applied", "Source": "Automation", "notion_page_id": "p1"})
+    wired["install"](lambda summary: [])
+    pj.run(dry_run=True)
+    assert outcomes() == []
+
+
+def test_feedback_capture_failing_never_fails_the_discovery_run(wired, monkeypatch):
+    def boom(*a, **k):
+        raise RuntimeError("ledger locked")
+
+    monkeypatch.setattr(pj, "sync_human_outcomes", boom)
+    wired["install"](lambda summary: [])
+    pj.run()
+    assert last_run()["status"] == "ok"
+
+
+def test_legacy_rejections_are_imported_into_the_ledger_on_the_first_run(wired, tmp_path, monkeypatch):
+    import json
+    from datetime import datetime, timezone
+
+    legacy = tmp_path / "decisions.jsonl"
+    legacy.write_text(json.dumps({"fp": "f1", "jd_hash": "h1", "verdict": "rejected", "reason": "r", "sig": "s",
+                                  "ts": datetime.now(timezone.utc).isoformat()}) + "\n")
+    monkeypatch.setattr("src.jobs.decisions.LEGACY_DECISIONS_PATH", legacy)
+    wired["install"](lambda summary: [])
+    pj.run()
+    pj.run()
+    ledger = Ledger()
+    assert ledger.query("SELECT COUNT(*) AS n FROM verdicts WHERE node='legacy'")[0]["n"] == 1
+    ledger.close()

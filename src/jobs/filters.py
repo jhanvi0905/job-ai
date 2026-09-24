@@ -18,6 +18,38 @@ class FilterResult:
     keyword_score: int = 0
     min_years_required: int | None = None
     years_evidence: str = ""
+    # One closed-vocabulary code per reason, same order. codes[0] is the PRIMARY
+    # reason (the first rule that fired) — the one the funnel counts.
+    codes: list[str] = field(default_factory=list)
+
+
+# Message fragment -> reason code. Kept next to the messages so a new rule and
+# its code are edited together; tests assert no real message falls through to
+# "stage0_other" (which would hide a rule inside an 'other' bucket).
+_REASON_CODES = [
+    ("stale:", "stale"),
+    ("not in allowed list", "workplace_type"),
+    ("location unknown", "location_unknown"),
+    ("structured location_country", "location_restricted"),
+    ("role not located in", "location_restricted"),
+    ("remote but restricted", "location_restricted"),
+    ("employment_type", "employment_type"),
+    ("seniority exclusion", "junior_title"),
+    ("too senior", "too_senior_title"),
+    ("yrs (you have", "years_too_high"),
+    ("junior-level ask", "junior_ask"),
+    ("hard exclusion", "hard_exclusion"),
+    ("no title-family match", "no_signal"),
+    ("non-engineering data/analyst", "analyst_title"),
+    ("no AI/ML/data signal", "generic_title"),
+]
+
+
+def code_for_reason(message: str) -> str:
+    for fragment, code in _REASON_CODES:
+        if fragment in message:
+            return code
+    return "stage0_other"
 
 
 def _has_any(patterns: list[str], text: str) -> bool:
@@ -185,4 +217,5 @@ def apply_filters(job: NormalizedJob, career_rules: dict, roles_config: dict) ->
         keyword_score=score,
         min_years_required=min_years,
         years_evidence=years_req.evidence if years_req else "",
+        codes=[code_for_reason(r) for r in reasons],
     )

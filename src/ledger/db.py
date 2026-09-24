@@ -23,7 +23,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from src.ledger.codes import CALL_OUTCOMES, RUN_STATUSES, sql_in
+from src.ledger.codes import CALL_OUTCOMES, DISPOSITIONS, NODE_REASONS, NODES, REASON_CODES, RUN_STATUSES, sql_in
 
 DEFAULT_LEDGER_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "ledger.db"
 
@@ -69,6 +69,28 @@ MIGRATIONS: dict[int, str] = {
     CREATE INDEX idx_llm_calls_run     ON llm_calls(run_id);
     CREATE INDEX idx_llm_calls_created ON llm_calls(created_at);
     CREATE INDEX idx_llm_calls_node    ON llm_calls(node, outcome);
+    """,
+    2: f"""
+    CREATE TABLE events (
+        event_id     INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id       TEXT NOT NULL REFERENCES runs(run_id),
+        item_id      TEXT NOT NULL,
+        node         TEXT NOT NULL CHECK (node IN ({sql_in(NODES)})),
+        disposition  TEXT NOT NULL CHECK (disposition IN ({sql_in(DISPOSITIONS)})),
+        reason_code  TEXT NOT NULL CHECK (reason_code IN ({sql_in(REASON_CODES)})),
+        detail       TEXT,
+        created_at   TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX idx_events_terminal ON events(run_id, item_id, node);
+    CREATE INDEX idx_events_analysis ON events(node, disposition, reason_code);
+
+    CREATE TABLE funnel (
+        run_id       TEXT NOT NULL REFERENCES runs(run_id),
+        node         TEXT NOT NULL CHECK (node IN ({sql_in(NODES)})),
+        reason_code  TEXT NOT NULL CHECK (reason_code IN ({sql_in(REASON_CODES)})),
+        n            INTEGER NOT NULL CHECK (n >= 0),
+        PRIMARY KEY (run_id, node, reason_code)
+    );
     """,
 }
 
@@ -176,6 +198,34 @@ class Ledger:
                 ),
             )
 
+    # ---- item-level events (Phase 2) ---------------------------------------
+    def record_event(
+        self, *, run_id: str, item_id: str, node: str, disposition: str, reason_code: str, detail: str | None = None
+    ) -> None:
+        """One TERMINAL event per (run, item, node). A second one for the same
+        triple raises IntegrityError: that is a pipeline bug, not something to absorb."""
+        _check_reason(node, reason_code)
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO events (run_id, item_id, node, disposition, reason_code, detail, created_at)"
+                " VALUES (?,?,?,?,?,?,?)",
+                (run_id, item_id, node, disposition, reason_code, (detail or "")[:300] or None, _now()),
+            )
+
+    def record_funnel(self, run_id: str, node: str, counts: dict[str, int]) -> None:
+        """Aggregate counts for high-volume nodes (Stage 0 sees ~6,000 items a run;
+        per-item rows there would add noise, not insight). Accumulates on repeat."""
+        for code in counts:
+            _check_reason(node, code)
+        with self._lock:
+            for code, n in counts.items():
+                if n:
+                    self._conn.execute(
+                        "INSERT INTO funnel (run_id, node, reason_code, n) VALUES (?,?,?,?)"
+                        " ON CONFLICT(run_id, node, reason_code) DO UPDATE SET n = n + excluded.n",
+                        (run_id, node, code, int(n)),
+                    )
+
     # ---- budget queries (read by the gateway before every call) -----------
     def spent_in_run(self, run_id: str) -> float:
         return self._scalar("SELECT COALESCE(SUM(cost_usd), 0) FROM llm_calls WHERE run_id = ?", (run_id,))
@@ -201,3 +251,11 @@ class Ledger:
         """Read-only helper for health checks and tests."""
         with self._lock:
             return [dict(r) for r in self._conn.execute(sql, params).fetchall()]
+
+
+def _check_reason(node: str, code: str) -> None:
+    allowed = NODE_REASONS.get(node)
+    if allowed is None:
+        raise ValueError(f"unknown node {node!r}")
+    if code not in allowed:
+        raise ValueError(f"reason code {code!r} is not valid at node {node!r}")

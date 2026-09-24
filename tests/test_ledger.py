@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from src.ledger.codes import CALL_OUTCOMES
-from src.ledger.db import Ledger
+from src.ledger.db import MIGRATIONS, Ledger
 
 
 def call(ledger, run_id, **o):
@@ -16,7 +16,7 @@ def call(ledger, run_id, **o):
 
 def test_schema_is_created_and_versioned():
     ledger = Ledger.memory()
-    assert ledger.schema_version() == 1
+    assert ledger.schema_version() == max(MIGRATIONS)
     tables = {r["name"] for r in ledger.query("SELECT name FROM sqlite_master WHERE type='table'")}
     assert {"runs", "llm_calls", "schema_version"} <= tables
 
@@ -27,7 +27,7 @@ def test_reopening_an_existing_database_does_not_remigrate(tmp_path):
     run_id = first.start_run("discovery")
     first.close()
     second = Ledger(path)
-    assert second.schema_version() == 1
+    assert second.schema_version() == max(MIGRATIONS)
     assert second.query("SELECT run_id FROM runs")[0]["run_id"] == run_id
 
 

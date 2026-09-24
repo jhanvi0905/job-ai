@@ -42,7 +42,7 @@ python scripts/sync_jobs.py --dry-run   # preview: what would be written / rejec
 python scripts/rebuild_queue.py         # re-judge the whole existing queue under current rules (plan only)
 python scripts/rebuild_queue.py --apply # execute that plan; trash is recoverable, only untouched automation pages
 python scripts/verify_models.py         # confirm the configured AI models work
-python -m pytest                        # 96 tests
+python -m pytest                        # 174 tests, offline, $0
 ```
 
 ## Tuning it (all config, no code)
@@ -98,6 +98,37 @@ src/
   workflows/     process_job (the pipeline)
   capabilities.py  discover_jobs / analyse_job / get_priority_jobs  (callable by a future LifeOS agent)
 ```
+
+## Cost safety and observability (Phase 1)
+
+Every model call goes through ONE gateway (`src/ai/provider.py`); no stage can
+build its own unbudgeted client (provider is a required argument).
+
+* **Retries:** exponential backoff with full jitter, transient failures only
+  (timeout, connection, 429, 5xx, unparseable output); honours `Retry-After`;
+  4xx never retried; one schema-repair retry that shows the model its error.
+* **Budgets** (`config/models.yaml -> budget`), checked BEFORE every HTTP
+  attempt: per-run $0.15, per-day $0.30 (across runs), 400-call backstop. A
+  blocked call makes no request. A normal run costs ~$0.02-0.04.
+* **Circuit breaker:** 5 consecutive failed calls stop all calls for the run.
+* **Fail closed, never silent:** a call that can't complete leaves the job
+  un-written and un-remembered, so it is retried next run. A budget stop or an
+  outage is never recorded as a "rejection".
+* **Ledger** (`data/ledger.db`, SQLite): every HTTP attempt with tokens, cost,
+  latency, resolved model version and a closed-vocabulary outcome; every run
+  with status (`ok` / `degraded` / `failed`), code version and config signature.
+
+```bash
+python scripts/health.py     # tripwires over the last 24h; exit 1 if CRITICAL. Read-only, free.
+```
+
+### Testing policy: tests never spend money
+`tests/conftest.py` neutralises API keys and makes any real HTTP call raise
+`LiveNetworkBlocked`; local state (ledger, usage log, rejection memory) is
+redirected to a temp dir. AI behaviour is tested against scripted fakes
+(`tests/fakes.py`), including outages, 429s, budget exhaustion and the circuit
+breaker. The only live check is `scripts/verify_models.py` (~$0.00002), run by
+hand.
 
 ## Known limits (honest)
 

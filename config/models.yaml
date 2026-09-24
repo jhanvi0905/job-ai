@@ -32,6 +32,23 @@ routing:
     max_output_tokens: 700
     temperature: 0
 
+# ---- Gateway guardrails (src/ai/provider.py) --------------------------------
+# These protect the AI/ML API credit. The gateway checks them BEFORE every HTTP
+# attempt; a blocked call makes no request and is recorded in the ledger as
+# 'budget_exceeded'. A normal daily run costs ~$0.02-0.04, so these leave ~4x
+# headroom while making a runaway loop cost cents, not dollars.
+gateway:
+  timeout_s: 30
+  max_attempts: 3               # HTTP attempts per call, transient failures only
+  backoff_base_s: 1.0           # exponential, full jitter, capped below
+  backoff_max_s: 20.0
+  circuit_breaker_failures: 5   # consecutive failed calls -> stop calling this run
+
+budget:
+  per_run_usd: 0.15
+  per_day_usd: 0.30             # summed across ALL runs today (from the ledger)
+  max_calls_per_run: 400        # backstop if a provider ever stops reporting cost
+
 # Future stages (not built in MVP, kept here so routing stays config-driven
 # when they're added — see PRD §18):
 future:

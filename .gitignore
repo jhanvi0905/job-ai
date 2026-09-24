@@ -7,3 +7,4 @@ data/ai_usage.jsonl
 *.egg-info/
 logs/
 data/decisions.jsonl
+data/ledger.db*

@@ -15,7 +15,11 @@ from src.achievements.retrieval import retrieve_achievements
 from src.ai.classifier import classify_job
 from src.ai.matcher import analyse_match
 from src.integrations.job_record import evaluation_properties
+from src.ai.provider import LLMProvider
+from src.config import load_models
 from src.integrations.notion import NotionClient
+from src.jobs.decisions import rules_signature
+from src.ledger.db import Ledger
 from src.jobs.refetch import refetch_job
 from src.jobs.schemas import JobMatch
 from src.telemetry.logging import RunSummary
@@ -45,11 +49,25 @@ def analyse_job(job_fingerprint: str) -> JobMatch:
     source_type = job_fingerprint.split(":", 1)[0]
     job = refetch_job(page["Company"], source_type, job_fingerprint.split(":", 1)[1])
 
-    classification = classify_job(job)
-    achievements = retrieve_achievements(classification.role_family, classification.key_requirements)
-    match = analyse_match(
-        job, classification.key_requirements, achievements, classification=classification
+    ledger = Ledger()
+    run_id = ledger.start_run(
+        "analyse_job", budget_usd=load_models().get("budget", {}).get("per_run_usd"),
+        config_signature=rules_signature(),
     )
+    provider = LLMProvider(ledger, run_id)
+    status, note = "ok", None
+    try:
+        classification = classify_job(job, provider)
+        achievements = retrieve_achievements(classification.role_family, classification.key_requirements)
+        match = analyse_match(
+            job, classification.key_requirements, achievements, provider, classification=classification
+        )
+    except Exception as exc:
+        status, note = "failed", f"{type(exc).__name__}: {exc}"[:300]
+        raise
+    finally:
+        ledger.finish_run(run_id, status, note)
+        ledger.close()
 
     properties = evaluation_properties(classification, match)
     properties["Status"] = _RECOMMENDED_ACTION_TO_STATUS.get(match.recommended_action)

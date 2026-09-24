@@ -21,8 +21,7 @@ MAX_DESCRIPTION_CHARS = 4000  # keep Stage 1 input small and cheap
 FIT_RANK = {"no": 0, "weak": 1, "plausible": 2, "strong": 3}
 
 
-def classify_job(job: NormalizedJob, provider: LLMProvider | None = None) -> JobClassification:
-    provider = provider or LLMProvider()
+def classify_job(job: NormalizedJob, provider: LLMProvider) -> JobClassification:
     routing = load_models()["routing"]["classify_job"]
     rules = load_career_rules()
 
@@ -46,6 +45,10 @@ def classify_job(job: NormalizedJob, provider: LLMProvider | None = None) -> Job
         temperature=routing["temperature"],
         workflow="classify_job",
         job_id=job.job_fingerprint or job.external_job_id,
+        prompt_version="classify_job_v2",
+        context={"jd_chars_sent": min(len(job.description), MAX_DESCRIPTION_CHARS),
+                 "jd_truncated": len(job.description) > MAX_DESCRIPTION_CHARS},
+        validate=_validate_classification,
     )
     # The regex figure is a fact from the posting; the model's is a guess.
     if req:
@@ -53,6 +56,14 @@ def classify_job(job: NormalizedJob, provider: LLMProvider | None = None) -> Job
     raw["fit"] = cap_fit_by_years(raw.get("fit"), raw.get("min_years_required"), years)
     raw["relevant"] = _is_relevant(raw, rules["ai_gates"])
     return JobClassification(**raw)
+
+
+def _validate_classification(raw: dict) -> None:
+    """Strict enough that a missing verdict is repaired, not silently read as 'no'."""
+    missing = [k for k in ("role_type", "fit") if raw.get(k) in (None, "")]
+    if missing:
+        raise ValueError(f"missing required field(s): {', '.join(missing)}")
+    JobClassification(**{**raw, "relevant": False})  # enum/type checks (fit must be strong|plausible|weak|no)
 
 
 def cap_fit_by_years(fit: str | None, required: int | None, candidate_years: int) -> str | None:

@@ -74,8 +74,8 @@ MIGRATIONS: dict[int, str] = {
 
 
 class Ledger:
-    def __init__(self, path: str | Path = DEFAULT_LEDGER_PATH):
-        self.path = str(path)
+    def __init__(self, path: str | Path | None = None):
+        self.path = str(path if path is not None else DEFAULT_LEDGER_PATH)
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         # check_same_thread=False + our own lock: the gateway calls in from a pool.

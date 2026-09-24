@@ -36,7 +36,9 @@ from src.integrations.job_record import base_properties, evaluation_properties  
 from src.integrations.notion import NotionClient  # noqa: E402
 from src.jobs.decisions import DecisionCache  # noqa: E402
 from src.telemetry.logging import RunSummary, configure_logging  # noqa: E402
-from src.telemetry.usage import estimate_run_cost  # noqa: E402
+from src.ai.provider import LLMProvider  # noqa: E402
+from src.ledger.db import Ledger  # noqa: E402
+from src.config import load_models  # noqa: E402
 from src.workflows.process_job import (  # noqa: E402
     DedupIndex,
     build_sources,
@@ -76,7 +78,14 @@ def plan() -> None:
         fetch_all(build_sources(), summary), DedupIndex(protected), decisions, career_rules, roles, summary
     )
     print(f"{summary.fetched} fetched -> {len(candidates)} pass Stage 0 + dedup; evaluating with AI...")
-    approved = evaluate(candidates, decisions, career_rules, summary)
+    ledger = Ledger()
+    run_id = ledger.start_run("rebuild-plan", budget_usd=load_models().get("budget", {}).get("per_run_usd"))
+    try:
+        approved = evaluate(candidates, decisions, career_rules, summary, LLMProvider(ledger, run_id))
+        ledger.finish_run(run_id, "degraded" if summary.ai_errors else "ok")
+    except Exception as exc:
+        ledger.finish_run(run_id, "failed", f"{type(exc).__name__}: {exc}"[:300])
+        raise
 
     keep_page_ids: set[str] = set()
     writes = []
@@ -103,7 +112,8 @@ def plan() -> None:
         for p in managed
         if p["notion_page_id"] not in keep_page_ids
     ]
-    cost = estimate_run_cost("classify_job", started) + estimate_run_cost("analyse_match", started)
+    cost = ledger.spent_in_run(run_id)
+    ledger.close()
 
     PLAN_PATH.parent.mkdir(parents=True, exist_ok=True)
     PLAN_PATH.write_text(json.dumps({"writes": writes, "trash": trash, "rejections": summary.rejections}, indent=2), encoding="utf-8")

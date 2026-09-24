@@ -18,14 +18,13 @@ def analyse_match(
     job: NormalizedJob,
     key_requirements: list[str],
     achievements: list[RetrievedAchievement],
-    provider: LLMProvider | None = None,
+    provider: LLMProvider,
     classification: JobClassification | None = None,
 ) -> JobMatch:
     """The model judges each requirement (direct / adjacent / none); the fit
     band, priority and gaps are then computed in code from those judgments —
     so "strong" means something specific and every gap is a requirement the
     model actually found unsupported."""
-    provider = provider or LLMProvider()
     routing = load_models()["routing"]["analyse_match"]
 
     prompt = PROMPT_PATH.read_text(encoding="utf-8").format(
@@ -41,8 +40,26 @@ def analyse_match(
         temperature=routing["temperature"],
         workflow="analyse_match",
         job_id=job.job_fingerprint or job.external_job_id,
+        prompt_version="analyse_match_v3",
+        context={"evidence_ids": [a.id for a in achievements], "jd_chars_sent": min(len(job.description), 3500)},
+        validate=_validate_match,
     )
     return score_match(raw)
+
+
+def _validate_match(raw: dict) -> None:
+    """An empty/garbled requirements list must be repaired, not scored as 'weak' —
+    that would silently turn a model failure into a confident-looking rejection."""
+    reqs = raw.get("requirements")
+    if not isinstance(reqs, list) or not reqs:
+        raise ValueError("'requirements' must be a non-empty list")
+    for r in reqs:
+        if not isinstance(r, dict) or not r.get("req"):
+            raise ValueError("every requirement needs a non-empty 'req'")
+        if r.get("evidence") not in ("direct", "adjacent", "none"):
+            raise ValueError(f"evidence must be direct|adjacent|none, got {r.get('evidence')!r}")
+        if r.get("importance") not in ("core", "secondary"):
+            raise ValueError(f"importance must be core|secondary, got {r.get('importance')!r}")
 
 
 def score_match(raw: dict) -> JobMatch:

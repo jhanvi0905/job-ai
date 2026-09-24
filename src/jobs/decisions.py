@@ -42,8 +42,8 @@ def rules_signature() -> str:
 
 
 class DecisionCache:
-    def __init__(self, path: Path = DECISIONS_PATH, persist: bool = True):
-        self.path = path
+    def __init__(self, path: Path | None = None, persist: bool = True):
+        self.path = path if path is not None else DECISIONS_PATH
         self.persist = persist
         self.signature = rules_signature()
         self._by_fp: dict[str, dict] = {}

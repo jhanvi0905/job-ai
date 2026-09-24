@@ -20,6 +20,8 @@ Cost/latency discipline (PRD §2.3 / §19 — narrow before you pay):
 from __future__ import annotations
 
 import logging
+import subprocess
+from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -28,10 +30,11 @@ from src.achievements.retrieval import retrieve_achievements
 from src.ai.classifier import FIT_RANK, cap_fit_by_years, classify_job
 from src.ai.matcher import analyse_match
 from src.ai.provider import LLMProvider
-from src.config import load_career_rules, load_roles, load_sources
+from src.config import load_career_rules, load_models, load_roles, load_sources
 from src.integrations.job_record import base_properties, evaluation_properties
 from src.integrations.notion import NotionClient
-from src.jobs.decisions import DecisionCache
+from src.ledger.db import Ledger
+from src.jobs.decisions import DecisionCache, rules_signature
 from src.jobs.filters import apply_filters
 from src.jobs.fingerprint import content_key
 from src.jobs.normalize import normalize_job
@@ -43,7 +46,6 @@ from src.sources.himalayas import HimalayasSource
 from src.sources.lever import LeverSource
 from src.sources.smartrecruiters import SmartRecruitersSource
 from src.telemetry.logging import RunSummary
-from src.telemetry.usage import estimate_run_cost
 
 logger = logging.getLogger(__name__)
 
@@ -187,13 +189,12 @@ def evaluate(
     decisions: DecisionCache,
     career_rules: dict,
     summary: RunSummary,
-    provider: LLMProvider | None = None,
+    provider: LLMProvider,
 ) -> list[Candidate]:
     """Stage 1 then Stage 3, concurrent within each stage. Returns only the
     candidates the AI says are worth your time."""
     if not candidates:
         return []
-    provider = provider or LLMProvider()
     gates = career_rules["ai_gates"]
 
     def _classify(c: Candidate):
@@ -291,26 +292,51 @@ def write_to_notion(candidates: list[Candidate], notion: NotionClient, summary: 
             summary.source_errors.append(msg)
 
 
+def _code_version() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=Path(__file__).resolve().parent.parent.parent,
+            text=True, stderr=subprocess.DEVNULL, timeout=2,
+        ).strip()
+    except Exception:  # noqa: BLE001 — best effort; never block a run over this
+        return "unknown"
+
+
 def run(dry_run: bool = False) -> RunSummary:
-    run_started_at = datetime.now(timezone.utc)
     summary = RunSummary()
     career_rules = load_career_rules()
     roles_config = load_roles()
-    notion = NotionClient()
 
-    # One bulk read. If it fails we abort rather than risk writing duplicates.
-    index = DedupIndex(notion.list_all_pages())
-    decisions = DecisionCache(persist=not dry_run)
-
-    jobs = fetch_all(build_sources(), summary)
-    candidates = stage0_filter_and_dedupe(jobs, index, decisions, career_rules, roles_config, summary)
-    vetted = evaluate(candidates, decisions, career_rules, summary)
-    if not dry_run:
-        write_to_notion(vetted, notion, summary)
-
-    summary.estimated_cost_usd = estimate_run_cost("classify_job", run_started_at) + estimate_run_cost(
-        "analyse_match", run_started_at
+    ledger = Ledger()
+    run_id = ledger.start_run(
+        "discovery-dry" if dry_run else "discovery",
+        budget_usd=load_models().get("budget", {}).get("per_run_usd"),
+        code_version=_code_version(),
+        config_signature=rules_signature(),
     )
+    provider = LLMProvider(ledger, run_id)
+    status, note = "ok", None
+    try:
+        notion = NotionClient()
+        # One bulk read. If it fails we abort rather than risk writing duplicates.
+        index = DedupIndex(notion.list_all_pages())
+        decisions = DecisionCache(persist=not dry_run)
+
+        jobs = fetch_all(build_sources(), summary)
+        candidates = stage0_filter_and_dedupe(jobs, index, decisions, career_rules, roles_config, summary)
+        vetted = evaluate(candidates, decisions, career_rules, summary, provider)
+        if not dry_run:
+            write_to_notion(vetted, notion, summary)
+
+        summary.estimated_cost_usd = ledger.spent_in_run(run_id)
+        if summary.ai_errors:
+            status, note = "degraded", f"{len(summary.ai_errors)} AI error(s); affected jobs retry next run"
+    except Exception as exc:
+        status, note = "failed", f"{type(exc).__name__}: {exc}"[:300]
+        raise
+    finally:
+        ledger.finish_run(run_id, status, note)
+        ledger.close()
     return summary
 
 

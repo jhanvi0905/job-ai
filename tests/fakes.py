@@ -56,3 +56,19 @@ class FakeSession:
         if isinstance(item, Exception):
             raise item
         return item
+
+
+class RoutedSession:
+    """Deterministic under concurrency: the response depends on the request, not on call order."""
+
+    def __init__(self, router):
+        self.router = router
+        self.requests: list[dict] = []
+
+    @property
+    def calls(self) -> int:
+        return len(self.requests)
+
+    def post(self, url, headers=None, json=None, timeout=None):
+        self.requests.append(json)
+        return self.router(json)

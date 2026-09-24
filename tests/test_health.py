@@ -115,3 +115,93 @@ def test_findings_are_sorted_worst_first():
     add(ledger, run, 1, outcome="circuit_open", cost=0)
     levels = [f.level for f in check(ledger, BUDGET)]
     assert levels == sorted(levels, key={"crit": 0, "warn": 1, "ok": 2}.get)
+
+
+# ---------------------------------------------------------------- Phase 2 checks
+from tests.test_conservation import balanced_run  # noqa: E402
+
+
+def ev(ledger, run, node, item, disposition, code):
+    ledger.record_event(run_id=run, item_id=item, node=node, disposition=disposition, reason_code=code)
+
+
+def test_a_balanced_completed_run_passes_the_conservation_audit():
+    ledger, run, _ = balanced_run()
+    ledger.finish_run(run, "ok")
+    assert by_name(check(ledger, BUDGET))["conservation"].level == "ok"
+
+
+def test_a_run_that_lost_an_item_is_critical_and_names_it():
+    ledger, run, _ = balanced_run()
+    ledger._conn.execute("DELETE FROM events WHERE item_id='b' AND node='match'")
+    ledger.finish_run(run, "ok")
+    f = by_name(check(ledger, BUDGET))["conservation"]
+    assert f.level == "crit" and "no match event: b" in f.message
+
+
+def test_runs_still_in_flight_and_other_graphs_are_not_audited():
+    ledger, run, _ = balanced_run()
+    ledger._conn.execute("DELETE FROM events WHERE item_id='b' AND node='match'")
+    assert by_name(check(ledger, BUDGET))["conservation"].level == "ok"  # still 'running'
+    ledger.finish_run(run, "ok")
+    ledger._conn.execute("UPDATE runs SET graph='discovery-dry' WHERE run_id=?", (run,))
+    assert by_name(check(ledger, BUDGET))["conservation"].level == "ok"
+
+
+def _verdicts(ledger, run, node, code, n, disposition="rejected", prefix="i"):
+    for i in range(n):
+        ev(ledger, run, node, f"{prefix}{node}{code}{i}", disposition, code)
+
+
+def test_uniform_verdicts_are_flagged_even_though_nothing_failed():
+    """The '35 of 35 weak' incident: no error, no log line, completely wrong."""
+    ledger, run = fresh()
+    _verdicts(ledger, run, "match", "rejected_weak", 35)
+    f = by_name(check(ledger, BUDGET))["verdicts"]
+    assert f.level == "warn" and "35/35" in f.message and "rejected_weak" in f.message
+
+
+def test_a_varied_verdict_mix_is_fine_and_small_samples_are_not_judged():
+    ledger, run = fresh()
+    _verdicts(ledger, run, "match", "rejected_weak", 12)
+    _verdicts(ledger, run, "match", "approved_match", 10, disposition="passed")
+    assert by_name(check(ledger, BUDGET))["verdicts"].level == "ok"
+    other, r2 = fresh()
+    _verdicts(other, r2, "match", "rejected_weak", 19)
+    f = by_name(check(other, BUDGET))["verdicts"]
+    assert f.level == "ok" and "too few" in f.message
+
+
+def test_deferred_and_errored_items_do_not_count_as_verdicts():
+    ledger, run = fresh()
+    _verdicts(ledger, run, "triage", "llm_budget", 30, disposition="deferred")
+    assert "too few" in by_name(check(ledger, BUDGET))["verdicts"].message
+
+
+def test_empty_retrieval_is_reported_as_a_retrieval_problem():
+    ledger, run = fresh()
+    for i in range(10):
+        ledger.record_call(run_id=run, node="analyse_match", attempt=1, model_requested="m", outcome="ok",
+                           context={"evidence_ids": [] if i < 3 else ["A01"]})
+    f = by_name(check(ledger, BUDGET))["empty_evidence"]
+    assert f.level == "warn" and "3/10" in f.message and "retrieval" in f.message
+
+
+def test_healthy_retrieval_and_tiny_samples_are_fine():
+    ledger, run = fresh()
+    for i in range(10):
+        ledger.record_call(run_id=run, node="analyse_match", attempt=1, model_requested="m", outcome="ok", context={"evidence_ids": ["A01"]})
+    assert by_name(check(ledger, BUDGET))["empty_evidence"].level == "ok"
+
+
+def test_a_run_that_started_and_never_finished_is_critical():
+    ledger, run = fresh()
+    long_ago = (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat()
+    ledger._conn.execute("UPDATE runs SET started_at=? WHERE run_id=?", (long_ago, run))
+    f = by_name(check(ledger, BUDGET))["stuck_runs"]
+    assert f.level == "crit" and run in f.message
+
+
+def test_a_run_that_is_merely_in_progress_is_not_stuck():
+    ledger, run = fresh()
+    assert by_name(check(ledger, BUDGET))["stuck_runs"].level == "ok"

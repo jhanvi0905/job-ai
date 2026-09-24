@@ -42,7 +42,7 @@ python scripts/sync_jobs.py --dry-run   # preview: what would be written / rejec
 python scripts/rebuild_queue.py         # re-judge the whole existing queue under current rules (plan only)
 python scripts/rebuild_queue.py --apply # execute that plan; trash is recoverable, only untouched automation pages
 python scripts/verify_models.py         # confirm the configured AI models work
-python -m pytest                        # 174 tests, offline, $0
+python -m pytest                        # 225 tests, offline, $0
 ```
 
 ## Tuning it (all config, no code)
@@ -121,6 +121,29 @@ build its own unbudgeted client (provider is a required argument).
 ```bash
 python scripts/health.py     # tripwires over the last 24h; exit 1 if CRITICAL. Read-only, free.
 ```
+
+### Item-level events and self-audit (Phase 2)
+
+Beyond model calls, the ledger records what happened to every *item* (job):
+
+* **Funnel** (aggregate): every job entering Stage 0 is counted once under a
+  closed-vocabulary reason (`stale`, `generic_title`, `years_too_high`,
+  `location_restricted`, ..., `passed_stage0`).
+* **Events** (per item, from dedup onward): each item gets exactly ONE terminal
+  event per node (`dedupe`, `triage`, `match`, `write`) with a disposition
+  (`passed` / `rejected` / `skipped` / `deferred` / `errored`) and a reason code.
+  A duplicate terminal event is refused by a unique index.
+* **Deferred != rejected.** Budget stops, breaker trips and the deep-match cap
+  are recorded as `deferred` (retried next run) and never enter the rejection
+  memory. The cap used to be a silent drop; it is now an explicit event.
+* **Conservation:** every run audits itself. Stage 0 must account for every
+  fetched job, and dedupe -> triage -> match -> write must balance item by item.
+  A violation marks the run `degraded` and names the missing items.
+
+`python scripts/health.py` adds four checks that catch failures which raise no
+error: `conservation` (silent item loss), `verdicts` (a stage saying the same
+thing about >=95% of 20+ items — the "35/35 weak" incident), `empty_evidence`
+(retrieval, not the model, is failing) and `stuck_runs`.
 
 ### Testing policy: tests never spend money
 `tests/conftest.py` neutralises API keys and makes any real HTTP call raise

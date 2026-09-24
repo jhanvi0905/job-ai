@@ -1,9 +1,11 @@
 """Tripwires over the ledger: does the last 24h look healthy?
 
-Only checks that Phase 1 data can genuinely support (model-call outcomes, spend,
-latency, model-version drift, run status). Item-level checks (verdict entropy,
-funnel conservation, zero-evidence rate) arrive with the item-event table in a
-later phase — deliberately not faked here.
+Phase 1 checks (model calls): spend, guardrails, failure/retry rates, latency,
+model-version drift, run outcomes.
+Phase 2 checks (item events): conservation (nothing silently lost between
+stages), verdict uniformity (a model that says the same thing about everything
+is broken even though nothing "failed"), empty evidence (retrieval, not model,
+is failing), and runs that started but never finished.
 
 Each check answers a "which layer is failing?" question:
     spend / blocked      -> cost guardrails
@@ -11,7 +13,10 @@ Each check answers a "which layer is failing?" question:
     schema_invalid       -> model output layer (prompt or model regression)
     retry_rate / latency -> provider health
     model_drift          -> silent upstream change
-    runs                 -> whole-pipeline failures
+    runs / stuck_runs    -> whole-pipeline failures
+    conservation         -> silent item loss between stages
+    verdicts             -> miscalibration (uniform outputs)
+    empty_evidence       -> retrieval / index problems
 """
 from __future__ import annotations
 
@@ -19,6 +24,7 @@ import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+from src.ledger.conservation import check_conservation
 from src.ledger.db import Ledger
 
 _ORDER = {"crit": 0, "warn": 1, "ok": 2}
@@ -50,7 +56,7 @@ def check(ledger: Ledger, budget: dict, now: datetime | None = None, window_hour
     spent, cap = ledger.spent_today(), budget.get("per_day_usd", 0.30)
     pct = spent / cap if cap else 0.0
     level = "crit" if pct >= 1 else "warn" if pct >= 0.8 else "ok"
-    out.append(Finding(level, "spend", f"${spent:.4f} of ${cap:.2f} daily cap ({pct:.0%})"))
+    out.append(Finding(level, "spend", f"${spent:.5f} of ${cap:.2f} daily cap ({pct:.0%})"))
 
     # --- guardrails that fired ------------------------------------------
     blocked = ledger.query(
@@ -115,4 +121,63 @@ def check(ledger: Ledger, budget: dict, now: datetime | None = None, window_hour
     else:
         out.append(Finding("ok", "runs", f"{sum(by.values())} run(s), none failed or degraded"))
 
+    out.extend(_item_level_findings(ledger, now, since, window_hours))
     return sorted(out, key=lambda f: _ORDER[f.level])
+
+
+def _item_level_findings(ledger: Ledger, now: datetime, since: str, window_hours: float) -> list[Finding]:
+    out: list[Finding] = []
+
+    # --- runs that never finished (crash / kill) -------------------------
+    stuck = ledger.query(
+        "SELECT run_id, graph, started_at FROM runs WHERE status = 'running' AND started_at < ?", (_since(2, now),)
+    )
+    if stuck:
+        out.append(Finding("crit", "stuck_runs", f"{len(stuck)} run(s) started >2h ago and never finished (crashed?): {stuck[0]['run_id']}"))
+    else:
+        out.append(Finding("ok", "stuck_runs", "no runs left hanging"))
+
+    # --- conservation: nothing may vanish between stages -----------------
+    runs = ledger.query(
+        "SELECT run_id FROM runs WHERE graph = 'discovery' AND status IN ('ok','degraded') AND started_at >= ?", (since,)
+    )
+    broken = [(r["run_id"], v[0]) for r in runs if (v := check_conservation(ledger, r["run_id"]))]
+    if broken:
+        out.append(Finding("crit", "conservation", f"{len(broken)} run(s) lost items. {broken[0][0]}: {broken[0][1]}"))
+    elif runs:
+        out.append(Finding("ok", "conservation", f"{len(runs)} completed run(s), every item accounted for"))
+    else:
+        out.append(Finding("ok", "conservation", "no completed discovery runs to audit"))
+
+    # --- uniform verdicts: the failure that produces no error ------------
+    flagged, judged = [], 0
+    for node in ("triage", "match"):
+        rows = ledger.query(
+            "SELECT reason_code, COUNT(*) AS n FROM events e JOIN runs r ON r.run_id = e.run_id"
+            " WHERE e.node = ? AND r.graph = 'discovery' AND e.created_at >= ? AND e.disposition IN ('passed','rejected')"
+            " GROUP BY reason_code",
+            (node, since),
+        )
+        total = sum(r["n"] for r in rows)
+        judged += total
+        if total >= 20:
+            top = max(rows, key=lambda r: r["n"])
+            if top["n"] / total >= 0.95:
+                flagged.append(f"{node}: {top['n']}/{total} verdicts are '{top['reason_code']}'")
+    if flagged:
+        out.append(Finding("warn", "verdicts", "nearly uniform — check calibration. " + "; ".join(flagged)))
+    else:
+        out.append(Finding("ok", "verdicts", f"verdict mix looks varied ({judged} judged)" if judged >= 20 else f"too few verdicts to judge ({judged})"))
+
+    # --- retrieval failing (not the model) --------------------------------
+    row = ledger.query(
+        "SELECT COUNT(*) AS total, SUM(CASE WHEN context_json LIKE '%\"evidence_ids\": []%' THEN 1 ELSE 0 END) AS empty"
+        " FROM llm_calls WHERE node = 'analyse_match' AND outcome = 'ok' AND created_at >= ?",
+        (since,),
+    )[0]
+    total, empty = row["total"] or 0, row["empty"] or 0
+    if total >= 10 and empty / total > 0.10:
+        out.append(Finding("warn", "empty_evidence", f"{empty}/{total} match calls had NO retrieved evidence — an index/retrieval problem, not a model one"))
+    else:
+        out.append(Finding("ok", "empty_evidence", f"{empty}/{total} match calls had no evidence" if total else "no match calls in window"))
+    return out

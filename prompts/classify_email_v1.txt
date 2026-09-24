@@ -1,0 +1,19 @@
+You classify ONE email a job applicant received about an application they made. You see only the sender, subject and a short preview.
+
+Company: {company}
+Role applied for: {role}
+Sender domain: {domain}
+Subject: {subject}
+Preview: {snippet}
+
+Choose exactly one class:
+- confirmation: the application was received/submitted, nothing more.
+- interview_request: the company wants to schedule a call, screen or interview.
+- assessment: a coding challenge, take-home or test is being sent.
+- rejection: the company is not moving forward (including polite "other candidates" wording).
+- offer: an offer of employment.
+- other: newsletters, marketing, job alerts, anything that does not change the application's status.
+
+Rules: use only what is written above; if the preview is too short to be sure, say so with a low confidence rather than guessing.
+
+Return ONLY JSON: {{"class": "<one of the classes>", "confidence": <0.0-1.0>, "why": "<max 12 words>"}}

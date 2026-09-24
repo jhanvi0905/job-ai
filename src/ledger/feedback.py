@@ -42,8 +42,16 @@ UNDECIDED = {"Discovered", "Watch"}
 
 def calibration(ledger: Ledger) -> dict:
     """Agreement between the system's approvals and the human's latest status."""
+    # A 'Rejected' set by an employer's email means you APPLIED — engagement with the
+    # system's suggestion, not you dismissing it. Only human-set Rejected counts as a dismissal.
+    employer_rejected = {
+        r["fingerprint"] for r in ledger.query(
+            "SELECT DISTINCT e.fingerprint FROM email_events e JOIN runs r ON r.run_id = e.run_id"
+            " WHERE r.graph = 'inbox' AND e.reason_code = 'matched_updated' AND e.to_status = 'Rejected'"
+        )
+    }
     rows = ledger.query(
-        "SELECT v.fit_band, v.priority, o.status, o.reject_reason FROM verdicts v"
+        "SELECT v.fingerprint, v.fit_band, v.priority, o.status, o.reject_reason FROM verdicts v"
         " JOIN (SELECT fingerprint, MAX(verdict_id) AS m FROM verdicts WHERE verdict='approved' GROUP BY fingerprint) l"
         "   ON l.m = v.verdict_id"
         " LEFT JOIN human_outcomes o ON o.outcome_id = (SELECT MAX(outcome_id) FROM human_outcomes WHERE fingerprint = v.fingerprint)"
@@ -52,7 +60,10 @@ def calibration(ledger: Ledger) -> dict:
     reasons: dict[str, int] = {}
     unknown_reasons: set[str] = set()
     for r in rows:
-        bucket = "positive" if r["status"] in POSITIVE else "rejected" if r["status"] in NEGATIVE else "undecided"
+        if r["status"] == "Rejected" and r["fingerprint"] in employer_rejected:
+            bucket = "positive"
+        else:
+            bucket = "positive" if r["status"] in POSITIVE else "rejected" if r["status"] in NEGATIVE else "undecided"
         by_priority.setdefault(r["priority"] or "?", {"positive": 0, "rejected": 0, "undecided": 0})[bucket] += 1
         if bucket == "rejected" and r["reject_reason"]:
             reasons[r["reject_reason"]] = reasons.get(r["reject_reason"], 0) + 1

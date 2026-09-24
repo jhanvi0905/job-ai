@@ -89,3 +89,27 @@ VERDICT_NODES = frozenset({"triage", "match", "legacy"})  # legacy = imported fr
 HUMAN_REJECT_REASONS = frozenset(
     {"wrong_role_type", "too_senior", "location", "company", "compensation", "other"}
 )
+
+
+# ---------------------------------------------------------------------------
+# Inbox (Phase 5). Every message the inbox run looks at ends with exactly one
+# terminal row; the reason says which layer stopped it.
+# ---------------------------------------------------------------------------
+EMAIL_CLASSES = frozenset({"confirmation", "interview_request", "assessment", "rejection", "offer", "other"})
+
+EMAIL_REASONS = frozenset(
+    {
+        "not_application_mail",     # prefilter: nothing job-related, 0 tokens
+        "no_company_match",         # looks job-related but not a pipeline company
+        "ambiguous_match",          # several pipeline pages fit; refuse to guess
+        "low_confidence",           # classifier unsure; no action
+        "other_class",              # matched, but not a status-bearing email
+        "no_change",                # would not move the status forward
+        "blocked_protected",        # would override a status you own (e.g. Rejected/Offer)
+        "matched_updated",          # Notion status advanced
+        "llm_error",                # classifier failed; retried next run
+        "notion_error",             # Notion write failed; retried next run
+    }
+)
+# Not final: the message is looked at again next run.
+EMAIL_RETRYABLE = frozenset({"llm_error", "notion_error"})

@@ -42,7 +42,8 @@ def rules_signature() -> str:
         ),
         (PROMPTS_DIR / "classify_job_v2.txt").read_text(encoding="utf-8"),
         (PROMPTS_DIR / "analyse_match_v3.txt").read_text(encoding="utf-8"),
-        json.dumps(load_models()["routing"], sort_keys=True),
+        # only the job-vetting routes: other workflows (e.g. inbox) must not invalidate job verdicts
+        json.dumps({k: load_models()["routing"][k] for k in ("classify_job", "analyse_match")}, sort_keys=True),
     ]
     return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:16]
 

@@ -193,7 +193,7 @@ def _to_notion_properties(props: dict) -> dict:
             out[key] = {"url": value}
         elif key in {"Status", "Priority", "Source", "Source Channel", "Work Mode", "Role Family", "Fit Band", "Action Mode"}:
             out[key] = {"select": {"name": value}}
-        elif key in {"Found Date", "Date Posted", "Last Checked", "Last Analysed", "Applied Date"}:
+        elif key in {"Found Date", "Date Posted", "Last Checked", "Last Analysed", "Applied Date", "Last Update"}:
             if isinstance(value, (date, datetime)):
                 value = value.isoformat()
             out[key] = {"date": {"start": value}}

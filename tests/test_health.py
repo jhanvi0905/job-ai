@@ -205,3 +205,29 @@ def test_a_run_that_started_and_never_finished_is_critical():
 def test_a_run_that_is_merely_in_progress_is_not_stuck():
     ledger, run = fresh()
     assert by_name(check(ledger, BUDGET))["stuck_runs"].level == "ok"
+
+
+# ---------------------------------------------------------------- Phase 5
+def _email(ledger, run, n, reason, prefix):
+    for i in range(n):
+        ledger.record_email_event(run_id=run, message_id=f"{prefix}{reason}{i}", reason_code=reason)
+
+
+def test_inbox_matching_failures_are_flagged_only_with_enough_evidence():
+    ledger = Ledger.memory()
+    run = ledger.start_run("inbox")
+    _email(ledger, run, 6, "no_company_match", "a")
+    assert by_name(check(ledger, BUDGET))["inbox"].level == "ok"  # 6 < 10: too few to judge
+    _email(ledger, run, 6, "ambiguous_match", "a")
+    f = by_name(check(ledger, BUDGET))["inbox"]
+    assert f.level == "warn" and "12/12" in f.message
+
+
+def test_healthy_inbox_and_non_job_mail_are_fine():
+    ledger = Ledger.memory()
+    run = ledger.start_run("inbox")
+    _email(ledger, run, 50, "not_application_mail", "n")  # newsletters never count against it
+    _email(ledger, run, 8, "matched_updated", "u")
+    _email(ledger, run, 4, "no_change", "c")
+    f = by_name(check(ledger, BUDGET))["inbox"]
+    assert f.level == "ok" and "8 of 12" in f.message

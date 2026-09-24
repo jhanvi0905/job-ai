@@ -14,6 +14,7 @@ Each check answers a "which layer is failing?" question:
     retry_rate / latency -> provider health
     model_drift          -> silent upstream change
     runs / stuck_runs    -> whole-pipeline failures
+    inbox                -> email matching / classification problems
     conservation         -> silent item loss between stages
     verdicts             -> miscalibration (uniform outputs)
     empty_evidence       -> retrieval / index problems
@@ -122,6 +123,7 @@ def check(ledger: Ledger, budget: dict, now: datetime | None = None, window_hour
         out.append(Finding("ok", "runs", f"{sum(by.values())} run(s), none failed or degraded"))
 
     out.extend(_item_level_findings(ledger, now, since, window_hours))
+    out.append(_inbox_finding(ledger, _since(24 * 7, now)))
     return sorted(out, key=lambda f: _ORDER[f.level])
 
 
@@ -181,3 +183,22 @@ def _item_level_findings(ledger: Ledger, now: datetime, since: str, window_hours
     else:
         out.append(Finding("ok", "empty_evidence", f"{empty}/{total} match calls had no evidence" if total else "no match calls in window"))
     return out
+
+
+def _inbox_finding(ledger: Ledger, since: str) -> Finding:
+    """Job-looking mail that reaches no pipeline job is the inbox's silent failure:
+    nothing errors, statuses just never move."""
+    rows = ledger.query(
+        "SELECT e.reason_code, COUNT(*) AS n FROM email_events e JOIN runs r ON r.run_id = e.run_id"
+        " WHERE r.graph = 'inbox' AND e.created_at >= ? AND e.reason_code != 'not_application_mail' GROUP BY e.reason_code",
+        (since,),
+    )
+    by = {r["reason_code"]: r["n"] for r in rows}
+    total = sum(by.values())
+    if total < 10:
+        return Finding("ok", "inbox", f"{total} application-looking emails in 7 days (too few to judge)" if total else "no inbox activity in 7 days")
+    bad = by.get("no_company_match", 0) + by.get("ambiguous_match", 0)
+    if bad / total > 0.5:
+        return Finding("warn", "inbox", f"{bad}/{total} application emails matched no single pipeline job "
+                                          f"(no_company_match {by.get('no_company_match', 0)}, ambiguous {by.get('ambiguous_match', 0)}) — check company names / add jobs to the pipeline")
+    return Finding("ok", "inbox", f"{by.get('matched_updated', 0)} of {total} application emails advanced a status")

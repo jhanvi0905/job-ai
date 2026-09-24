@@ -19,9 +19,9 @@ def test_migration_3_adds_tables_without_touching_earlier_data(tmp_path):
     old = Ledger(path)
     run = old.start_run("discovery")
     old.record_call(run_id=run, node="triage", attempt=1, model_requested="m", outcome="ok", cost_usd=0.01)
-    old._conn.execute("DELETE FROM schema_version WHERE version = 3")  # simulate a v2 database
-    old._conn.execute("DROP TABLE verdicts")
-    old._conn.execute("DROP TABLE human_outcomes")
+    old._conn.execute("DELETE FROM schema_version WHERE version >= 3")  # simulate a v2 database
+    for table in ("verdicts", "human_outcomes", "email_events"):
+        old._conn.execute(f"DROP TABLE {table}")
     old.close()
     new = Ledger(path)
     assert new.schema_version() == max(MIGRATIONS) >= 3

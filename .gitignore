@@ -8,3 +8,4 @@ data/ai_usage.jsonl
 logs/
 data/decisions.jsonl
 data/ledger.db*
+data/gmail_*.json

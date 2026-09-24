@@ -86,3 +86,16 @@ LIVE_STATUSES = {"Discovered", "Shortlisted", "Watch", "Applied", "Recruiter Scr
 def test_every_status_option_in_the_notion_database_is_classified_exactly_once():
     assert POSITIVE | NEGATIVE | UNDECIDED == LIVE_STATUSES
     assert len(POSITIVE) + len(NEGATIVE) + len(UNDECIDED) == len(LIVE_STATUSES)
+
+
+def test_a_rejection_caused_by_the_employers_email_counts_as_engagement_not_dismissal():
+    ledger = Ledger.memory()
+    approve(ledger, "a", "strong", "P1")   # employer rejected after you applied
+    approve(ledger, "b", "strong", "P1")   # YOU rejected it
+    sync_human_outcomes(ledger, [page("a", "Rejected"), page("b", "Rejected", "location")])
+    run = ledger.start_run("inbox")
+    ledger.record_email_event(run_id=run, message_id="m1", reason_code="matched_updated", fingerprint="a", to_status="Rejected")
+    assert calibration(ledger)["by_priority"]["P1"] == {"positive": 1, "rejected": 1, "undecided": 0}
+    dry = ledger.start_run("inbox-dry")  # a dry-run preview proves nothing
+    ledger.record_email_event(run_id=dry, message_id="m2", reason_code="matched_updated", fingerprint="b", to_status="Rejected")
+    assert calibration(ledger)["by_priority"]["P1"] == {"positive": 1, "rejected": 1, "undecided": 0}

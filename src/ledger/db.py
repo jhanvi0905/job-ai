@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from src.ledger.codes import (
-    CALL_OUTCOMES, DISPOSITIONS, NODE_REASONS, NODES, REASON_CODES, RUN_STATUSES, VERDICT_NODES, VERDICTS, sql_in,
+    CALL_OUTCOMES, DISPOSITIONS, EMAIL_CLASSES, EMAIL_REASONS, EMAIL_RETRYABLE, NODE_REASONS, NODES, REASON_CODES, RUN_STATUSES, VERDICT_NODES, VERDICTS, sql_in,
 )
 
 DEFAULT_LEDGER_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "ledger.db"
@@ -121,6 +121,31 @@ MIGRATIONS: dict[int, str] = {
         observed_at    TEXT NOT NULL
     );
     CREATE INDEX idx_outcomes_fp ON human_outcomes(fingerprint, observed_at);
+    """,
+    4: f"""
+    CREATE TABLE email_events (
+        event_id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id         TEXT NOT NULL REFERENCES runs(run_id),
+        message_id     TEXT NOT NULL,
+        thread_id      TEXT,
+        received_at    TEXT,
+        sender_domain  TEXT,
+        subject        TEXT,
+        snippet        TEXT,
+        classification TEXT CHECK (classification IS NULL OR classification IN ({sql_in(EMAIL_CLASSES)})),
+        confidence     REAL CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+        method         TEXT CHECK (method IS NULL OR method IN ('rules','llm')),
+        fingerprint    TEXT,
+        match_method   TEXT,
+        reason_code    TEXT NOT NULL CHECK (reason_code IN ({sql_in(EMAIL_REASONS)})),
+        from_status    TEXT,
+        to_status      TEXT,
+        detail         TEXT,
+        created_at     TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX idx_email_terminal ON email_events(run_id, message_id);
+    CREATE INDEX idx_email_msg ON email_events(message_id);
+    CREATE INDEX idx_email_reason ON email_events(reason_code, created_at);
     """,
 }
 
@@ -298,6 +323,34 @@ class Ledger:
                 (run_id, fingerprint, notion_page_id, status, reject_reason, _now()),
             )
             return True
+
+    # ---- inbox (Phase 5) ---------------------------------------------------
+    def record_email_event(
+        self, *, run_id: str, message_id: str, reason_code: str, thread_id: str | None = None,
+        received_at: str | None = None, sender_domain: str | None = None, subject: str | None = None,
+        snippet: str | None = None, classification: str | None = None, confidence: float | None = None,
+        method: str | None = None, fingerprint: str | None = None, match_method: str | None = None,
+        from_status: str | None = None, to_status: str | None = None, detail: str | None = None,
+    ) -> None:
+        with self._lock:
+            self._conn.execute(
+                "INSERT INTO email_events (run_id, message_id, thread_id, received_at, sender_domain, subject,"
+                " snippet, classification, confidence, method, fingerprint, match_method, reason_code,"
+                " from_status, to_status, detail, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (run_id, message_id, thread_id, received_at, sender_domain, (subject or "")[:150] or None,
+                 (snippet or "")[:250] or None, classification, confidence, method, fingerprint, match_method,
+                 reason_code, from_status, to_status, (detail or "")[:300] or None, _now()),
+            )
+
+    def settled_message_ids(self) -> set[str]:
+        """Messages already given a FINAL verdict by a live run. Retryable failures
+        are excluded, and so are dry-run rows: a preview must never make the real
+        run skip a message."""
+        rows = self.query(
+            "SELECT DISTINCT e.message_id FROM email_events e JOIN runs r ON r.run_id = e.run_id"
+            f" WHERE r.graph = 'inbox' AND e.reason_code NOT IN ({sql_in(EMAIL_RETRYABLE)})"
+        )
+        return {r["message_id"] for r in rows}
 
     # ---- budget queries (read by the gateway before every call) -----------
     def spent_in_run(self, run_id: str) -> float:

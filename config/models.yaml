@@ -32,6 +32,12 @@ routing:
     max_output_tokens: 700
     temperature: 0
 
+  classify_email:
+    # Only for emails the deterministic rules could not settle; input is ~150 tokens.
+    model: "gpt-4o-mini"
+    max_output_tokens: 80
+    temperature: 0
+
 # ---- Gateway guardrails (src/ai/provider.py) --------------------------------
 # These protect the AI/ML API credit. The gateway checks them BEFORE every HTTP
 # attempt; a blocked call makes no request and is recorded in the ledger as

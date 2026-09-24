@@ -31,10 +31,13 @@ def sync_human_outcomes(ledger: Ledger, pages: list[dict], run_id: str | None = 
     return n
 
 
-# Statuses meaning the human engaged with the job vs. dismissed it. Anything
-# else (Discovered = untouched, Watch = parked) is "no decision yet".
-POSITIVE = {"Interested", "Preparing", "Ready to Apply", "Applied", "Interview", "Offer"}
+# The Job Pipeline's Status options (checked against the live database). Grouped by
+# what they say about the SYSTEM's suggestion: you engaged with it, dismissed it, or
+# haven't decided. Withdrawn / No Response happen only after you applied, so they
+# count as engaged. A status missing from all three sets is a bug (see the test).
+POSITIVE = {"Shortlisted", "Applied", "Recruiter Screen", "Interview", "Assessment", "Final", "Offer", "Withdrawn", "No Response"}
 NEGATIVE = {"Rejected"}
+UNDECIDED = {"Discovered", "Watch"}
 
 
 def calibration(ledger: Ledger) -> dict:

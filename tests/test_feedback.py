@@ -3,7 +3,7 @@ import pytest
 
 import src.workflows.process_job as pj
 from src.ledger.db import Ledger
-from src.ledger.feedback import calibration, format_calibration, sync_human_outcomes
+from src.ledger.feedback import NEGATIVE, POSITIVE, UNDECIDED, calibration, format_calibration, sync_human_outcomes
 
 
 def page(fp, status, reason=None, source="Automation", pid=None):
@@ -37,7 +37,7 @@ def test_calibration_counts_exactly_and_uses_the_latest_decision():
         approve(ledger, fp, band, pri)
     approve(ledger, "c", "plausible", "P2")  # re-judged later: newest verdict is the one compared
     sync_human_outcomes(ledger, [page("a", "Applied"), page("b", "Rejected", "too_senior"), page("c", "Discovered"), page("d", "Rejected", "company")])
-    sync_human_outcomes(ledger, [page("c", "Interested")])
+    sync_human_outcomes(ledger, [page("c", "Shortlisted")])
     c = calibration(ledger)
     assert c["approved"] == 4
     assert c["by_priority"] == {
@@ -77,3 +77,12 @@ def test_report_text_is_readable():
     sync_human_outcomes(ledger, [page("a", "Applied"), page("b", "Rejected", "location")])
     text = format_calibration(calibration(ledger))
     assert "P1: 1 kept, 1 rejected, 0 undecided (50% kept)" in text and "location x1" in text
+
+
+LIVE_STATUSES = {"Discovered", "Shortlisted", "Watch", "Applied", "Recruiter Screen", "Interview", "Assessment",
+                 "Final", "Offer", "Rejected", "Withdrawn", "No Response"}
+
+
+def test_every_status_option_in_the_notion_database_is_classified_exactly_once():
+    assert POSITIVE | NEGATIVE | UNDECIDED == LIVE_STATUSES
+    assert len(POSITIVE) + len(NEGATIVE) + len(UNDECIDED) == len(LIVE_STATUSES)

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import subprocess
+from collections import Counter
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -29,11 +30,13 @@ from datetime import datetime, timezone
 from src.achievements.retrieval import retrieve_achievements
 from src.ai.classifier import FIT_RANK, cap_fit_by_years, classify_job
 from src.ai.matcher import analyse_match
-from src.ai.provider import LLMProvider
+from src.ai.provider import BudgetExceeded, CircuitOpen, LLMProvider, SchemaError
 from src.config import load_career_rules, load_models, load_roles, load_sources
 from src.integrations.job_record import base_properties, evaluation_properties
 from src.integrations.notion import NotionClient
+from src.ledger.conservation import check_conservation
 from src.ledger.db import Ledger
+from src.ledger.events import NULL_EVENTS, Events
 from src.jobs.decisions import DecisionCache, rules_signature
 from src.jobs.filters import apply_filters
 from src.jobs.fingerprint import content_key
@@ -141,47 +144,84 @@ def stage0_filter_and_dedupe(
     career_rules: dict,
     roles_config: dict,
     summary: RunSummary,
+    events=NULL_EVENTS,
 ) -> list[Candidate]:
-    """Free and offline: no Notion or LLM calls happen here."""
+    """Free and offline: no Notion or LLM calls happen here.
+
+    Ledger accounting: EVERY job entering is counted exactly once in the stage0
+    funnel (a filter reason, in-run duplicate, or passed). Jobs that pass get a
+    per-item 'dedupe' event (passed, or skipped with the reason)."""
     candidates: list[Candidate] = []
     seen_fingerprints: set[str] = set()
     seen_content_keys: set[str] = set()
+    funnel: Counter = Counter()
 
     for job in jobs:
-        if job.job_fingerprint in seen_fingerprints:
+        fp = job.job_fingerprint
+        if fp in seen_fingerprints:
             summary.duplicates += 1  # same posting returned by two queries in one run
+            funnel["duplicate_in_run"] += 1
             continue
 
         result = apply_filters(job, career_rules, roles_config)
         if not result.passed:
             summary.stale_or_filtered += 1
+            funnel[result.codes[0] if result.codes else "stage0_other"] += 1
             logger.debug("filtered out %s @ %s: %s", job.title, job.company_name, result.reasons)
             continue
-        seen_fingerprints.add(job.job_fingerprint)
+        seen_fingerprints.add(fp)
+        funnel["passed_stage0"] += 1
 
-        existing = index.by_fingerprint.get(job.job_fingerprint)
+        existing = index.by_fingerprint.get(fp)
         if existing is not None:
             if existing.get("Status") not in (None, "Discovered"):
                 summary.in_progress_skipped += 1  # you've moved it on; hands off
+                events.item("dedupe", fp, "skipped", "in_progress")
                 continue
             if existing.get("JD Hash") == job.description_hash:
                 summary.duplicates += 1
+                events.item("dedupe", fp, "skipped", "duplicate_id")
                 continue
             # Same posting, changed description -> re-evaluate (PRD §12).
         else:
             key = content_key(job.company_name, job.title)
             if key in index.by_content_key or key in seen_content_keys:
                 summary.content_duplicates += 1
+                events.item("dedupe", fp, "skipped", "duplicate_role")
                 continue
             seen_content_keys.add(key)
 
-        if decisions.is_known_rejection(job.job_fingerprint, job.description_hash):
+        if decisions.is_known_rejection(fp, job.description_hash):
             summary.previously_rejected += 1
+            events.item("dedupe", fp, "skipped", "previously_rejected")
             continue
 
         summary.new_candidates += 1
+        events.item("dedupe", fp, "passed", "passed_dedupe")
         candidates.append(Candidate(job=job, existing=existing))
+
+    events.funnel("stage0", funnel)
     return candidates
+
+
+def _llm_failure(exc: Exception) -> tuple[str, str]:
+    """(disposition, reason code). Budget/breaker stops are DEFERRALS (never
+    judged, retried next run); real failures are ERRORS. Neither is a verdict."""
+    if isinstance(exc, BudgetExceeded):
+        return "deferred", "llm_budget"
+    if isinstance(exc, CircuitOpen):
+        return "deferred", "llm_circuit"
+    if isinstance(exc, SchemaError):
+        return "errored", "llm_schema"
+    return "errored", "llm_error"
+
+
+def _triage_reject_code(verdict, gates: dict) -> str:
+    if verdict.hard_blocker:
+        return "rejected_blocker"
+    if verdict.role_type not in gates["allowed_role_types"]:
+        return "rejected_role_type"
+    return "rejected_fit_low"
 
 
 def evaluate(
@@ -190,9 +230,11 @@ def evaluate(
     career_rules: dict,
     summary: RunSummary,
     provider: LLMProvider,
+    events=NULL_EVENTS,
 ) -> list[Candidate]:
     """Stage 1 then Stage 3, concurrent within each stage. Returns only the
-    candidates the AI says are worth your time."""
+    candidates the AI says are worth your time. Every candidate ends each node
+    with exactly one event — including the ones deferred by the match cap."""
     if not candidates:
         return []
     gates = career_rules["ai_gates"]
@@ -208,10 +250,13 @@ def evaluate(
 
     passed: list[Candidate] = []
     for cand, verdict in zip(candidates, verdicts):
+        fp = cand.job.job_fingerprint
         if isinstance(verdict, Exception):
             # Fail CLOSED: never write an unvetted job. Not recorded as a
             # rejection, so the next run retries it.
-            summary.ai_errors.append(f"classify {cand.job.job_fingerprint}: {verdict}")
+            summary.ai_errors.append(f"classify {fp}: {verdict}")
+            disposition, code = _llm_failure(verdict)
+            events.item("triage", fp, disposition, code, str(verdict))
             continue
         summary.classified += 1
         cand.classification = verdict
@@ -219,13 +264,17 @@ def evaluate(
             summary.ai_rejected += 1
             reason = f"stage1 {verdict.role_type}/{verdict.fit}: {verdict.why}"
             summary.rejections.append(f"{cand.job.title} @ {cand.job.company_name} -> {reason}")
-            decisions.record_rejection(cand.job.job_fingerprint, cand.job.description_hash, reason)
+            decisions.record_rejection(fp, cand.job.description_hash, reason)
+            events.item("triage", fp, "rejected", _triage_reject_code(verdict, gates), reason)
             continue
+        events.item("triage", fp, "passed", "approved_triage")
         passed.append(cand)
 
     cap = gates["max_deep_matches_per_run"]
     if len(passed) > cap:
         logger.warning("%d jobs passed Stage 1; deep-matching the first %d, rest next run", len(passed), cap)
+        for cand in passed[cap:]:  # previously a silent drop: now an explicit, queryable deferral
+            events.item("match", cand.job.job_fingerprint, "deferred", "cap_overflow", f"cap {cap}")
         passed = passed[:cap]
 
     def _match(c: Candidate):
@@ -242,8 +291,11 @@ def evaluate(
     final: list[Candidate] = []
     min_rank = FIT_RANK[gates["min_match_fit"]]
     for cand, result in zip(passed, matches):
+        fp = cand.job.job_fingerprint
         if isinstance(result, Exception):
-            summary.ai_errors.append(f"match {cand.job.job_fingerprint}: {result}")
+            summary.ai_errors.append(f"match {fp}: {result}")
+            disposition, code = _llm_failure(result)
+            events.item("match", fp, disposition, code, str(result))
             continue
         summary.deeply_analysed += 1
         # Same years rule as Stage 1, enforced in code; Priority always follows
@@ -258,13 +310,17 @@ def evaluate(
             result.fit_band, cand.classification.min_years_required, career_rules["experience"]["total_years"]
         )
         result.priority = {"strong": "P1", "plausible": "P2"}.get(result.fit_band, "P3")
-        if _MATCH_FIT_RANK.get(result.fit_band, 0) < min_rank or result.recommended_action == "reject":
+        rank = _MATCH_FIT_RANK.get(result.fit_band, 0)
+        if rank < min_rank or result.recommended_action == "reject":
             summary.match_rejected += 1
             reason = f"stage3 {result.fit_band}: {result.reason}"
             summary.rejections.append(f"{cand.job.title} @ {cand.job.company_name} -> {reason}")
-            decisions.record_rejection(cand.job.job_fingerprint, cand.job.description_hash, reason)
+            decisions.record_rejection(fp, cand.job.description_hash, reason)
+            code = "rejected_blocked" if result.fit_band == "blocked" else "rejected_weak" if rank < min_rank else "rejected_action"
+            events.item("match", fp, "rejected", code, reason)
             continue
         cand.match = result
+        events.item("match", fp, "passed", "approved_match")
         summary.approvals.append(
             f"[{result.priority} {result.fit_band}] {cand.job.title} @ {cand.job.company_name}"
             f" ({cand.classification.seniority}) — {result.reason}"
@@ -273,8 +329,11 @@ def evaluate(
     return final
 
 
-def write_to_notion(candidates: list[Candidate], notion: NotionClient, summary: RunSummary) -> None:
+def write_to_notion(
+    candidates: list[Candidate], notion: NotionClient, summary: RunSummary, events=NULL_EVENTS
+) -> None:
     for cand in candidates:
+        fp = cand.job.job_fingerprint
         is_new = cand.existing is None
         properties = {
             **base_properties(cand.job, is_new=is_new),
@@ -286,10 +345,12 @@ def write_to_notion(candidates: list[Candidate], notion: NotionClient, summary: 
             else:
                 notion.update_job_page(cand.existing["notion_page_id"], properties)
             summary.written_to_notion += 1
+            events.item("write", fp, "passed", "written_new" if is_new else "written_update")
         except Exception as exc:  # noqa: BLE001 — one job's write failing must not kill the batch
-            msg = f"Notion write failed for {cand.job.job_fingerprint}: {exc}"
+            msg = f"Notion write failed for {fp}: {exc}"
             logger.error(msg)
             summary.source_errors.append(msg)
+            events.item("write", fp, "errored", "notion_error", str(exc))
 
 
 def _code_version() -> str:
@@ -315,6 +376,7 @@ def run(dry_run: bool = False) -> RunSummary:
         config_signature=rules_signature(),
     )
     provider = LLMProvider(ledger, run_id)
+    events = Events(ledger, run_id)
     status, note = "ok", None
     try:
         notion = NotionClient()
@@ -323,14 +385,26 @@ def run(dry_run: bool = False) -> RunSummary:
         decisions = DecisionCache(persist=not dry_run)
 
         jobs = fetch_all(build_sources(), summary)
-        candidates = stage0_filter_and_dedupe(jobs, index, decisions, career_rules, roles_config, summary)
-        vetted = evaluate(candidates, decisions, career_rules, summary, provider)
+        events.funnel("fetch", {"normalized": len(jobs), "normalize_failed": max(0, summary.fetched - len(jobs))})
+        candidates = stage0_filter_and_dedupe(jobs, index, decisions, career_rules, roles_config, summary, events=events)
+        vetted = evaluate(candidates, decisions, career_rules, summary, provider, events=events)
         if not dry_run:
-            write_to_notion(vetted, notion, summary)
+            write_to_notion(vetted, notion, summary, events=events)
 
         summary.estimated_cost_usd = ledger.spent_in_run(run_id)
+        problems = []
         if summary.ai_errors:
-            status, note = "degraded", f"{len(summary.ai_errors)} AI error(s); affected jobs retry next run"
+            problems.append(f"{len(summary.ai_errors)} AI error(s); affected jobs retry next run")
+        # The run audits itself: an item that vanished between stages is a bug
+        # that produces no error, so it must be surfaced here.
+        violations = check_conservation(ledger, run_id, dry_run=dry_run)
+        if violations:
+            logger.error("conservation violated: %s", "; ".join(violations))
+            problems.append(f"CONSERVATION VIOLATED: {violations[0]}")
+        if events.write_failures:
+            problems.append(f"{events.write_failures} ledger event write(s) failed")
+        if problems:
+            status, note = "degraded", "; ".join(problems)[:300]
     except Exception as exc:
         status, note = "failed", f"{type(exc).__name__}: {exc}"[:300]
         raise

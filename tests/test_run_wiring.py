@@ -19,7 +19,7 @@ def wired(monkeypatch):
     monkeypatch.setattr(pj, "write_to_notion", lambda *a, **k: seen.setdefault("wrote", True))
 
     def install(evaluate):
-        def wrapper(candidates, decisions, rules, summary, provider):
+        def wrapper(candidates, decisions, rules, summary, provider, events=None):
             seen["provider"] = provider
             return evaluate(summary)
 

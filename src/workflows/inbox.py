@@ -17,7 +17,7 @@ from src.ai.email_classifier import classify_email
 from src.ai.provider import LLMProvider
 from src.inbox import policy, rules
 from src.inbox.gmail import GmailReader, Message
-from src.inbox.matcher import match_email
+from src.inbox.matcher import match_email, role_conflict
 from src.ledger.db import Ledger
 
 logger = logging.getLogger(__name__)
@@ -82,6 +82,10 @@ def _process(msg: Message, pages: list[dict], provider: LLMProvider, notion, dry
 
     if conf < MIN_CONFIDENCE:
         return done("low_confidence", **cls, **ident)
+    # A confirmation on the only page for that company is low-risk; anything that
+    # changes a job's fate must be about THIS role, not merely the same company.
+    if klass not in ("confirmation", "other") and m.method != "company+role" and role_conflict(role or "", company or "", msg.subject, msg.snippet):
+        return done("ambiguous_match", **cls, **{**ident, "match_method": "role_mismatch"}, detail="email names a different role than the matched page")
     outcome, new_status = policy.decide(current, klass, f"{msg.subject} {msg.snippet}")
     if outcome != "update":
         return done(outcome, **cls, **ident)

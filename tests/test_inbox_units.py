@@ -114,3 +114,21 @@ def test_status_policy_table(current, klass, text, outcome, new):
 def test_every_notion_status_has_a_rank_or_is_protected():
     from tests.test_feedback import LIVE_STATUSES
     assert set(policy.RANK) | policy.PROTECTED == LIVE_STATUSES
+
+
+# ------------------------------------------------------------- role guard
+from src.inbox.matcher import role_conflict  # noqa: E402
+
+
+@pytest.mark.parametrize("role,subject,snippet,conflict", [
+    # the real GitLab case: rejection names AI Engineer, the page is the NLP role
+    ("Senior Software Engineer, NLP", "Information about your application to GitLab - AI Engineer", "the AI Engineer role", True),
+    # the real FourKites case: same role -> fine
+    ("Senior Data Scientist", "Follow up from FourKites", "apply for the Senior Data Scientist position", False),
+    ("Machine Learning Engineer", "Update", "We are not moving forward", False),                  # no role named -> no conflict
+    ("Data Engineer", "Interview at Cummins", "Cummins would like to schedule a call", False),   # 'Cummins' is not a title word
+    ("Data Engineer", "Update", "your Backend Developer application", True),
+])
+def test_role_conflict(role, subject, snippet, conflict):
+    company = "GitLab" if "GitLab" in subject else "FourKites" if "FourKites" in subject else "Cummins"
+    assert role_conflict(role, company, subject, snippet) is conflict

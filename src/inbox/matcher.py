@@ -75,3 +75,20 @@ def match_email(pages: list[dict], sender_name: str, sender_domain: str, subject
     if len(engaged) == 1:
         return Match(engaged[0], "company+status", len(cands))
     return Match(None, "ambiguous", len(cands))
+
+
+_TITLE_WORDS = re.compile(
+    r"\b(engineer|scientist|developer|architect|analyst|manager|researcher|designer|specialist|consultant|lead|director)\b", re.I
+)
+
+
+def role_conflict(role: str, company: str, subject: str, snippet: str) -> bool:
+    """True when the email clearly talks about A role (it contains a job-title word
+    outside the company name) but not THIS page's role. A company-only match can
+    otherwise attach 'we won't be moving forward with your AI Engineer application'
+    to a different role's page. Emails that name no role are not in conflict.
+    Conservative on purpose: a false conflict only skips an auto-update."""
+    text = f"{subject} {snippet}"
+    for word in company_key(company).split():
+        text = re.sub(rf"\b{re.escape(word)}\b", " ", text, flags=re.I)
+    return bool(_TITLE_WORDS.search(text)) and role_score(role, text, "") < 0.5

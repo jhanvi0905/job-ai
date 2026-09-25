@@ -212,3 +212,28 @@ def test_a_gmail_auth_failure_fails_the_run_loudly():
     ledger = Ledger()
     r = ledger.query("SELECT status, note FROM runs")[0]
     assert r["status"] == "failed" and "revoked" in r["note"]
+
+
+def test_a_rejection_for_a_different_role_at_the_same_company_is_refused_not_applied():
+    """Real incident from the first dry-run: two GitLab applications, one pipeline page."""
+    page = pg("GitLab", "Senior Software Engineer, NLP", "Applied")
+    mail = msg(1, "GitLab", "us.greenhouse-mail.io", "Information about your application to GitLab - AI Engineer",
+               "Thank you for your interest in GitLab and the AI Engineer role. Unfortunately, we have decided not to move forward.")
+    s, notion, ledger = go([mail], [page])
+    e = events(ledger)["m1"]
+    assert notion.updates == [] and e["reason_code"] == "ambiguous_match" and e["match_method"] == "role_mismatch"
+    assert e["classification"] == "rejection"
+
+
+def test_a_rejection_that_names_this_role_still_applies():
+    page = pg("FourKites", "Senior Data Scientist", "Applied")
+    mail = msg(1, "FourKites", "us.greenhouse-mail.io", "Follow up from FourKites",
+               "Thank you for taking the time to apply for the Senior Data Scientist position. After careful consideration, we will not be moving forward.")
+    s, notion, _ = go([mail], [page])
+    assert notion.updates[0][1]["Status"] == "Rejected"
+
+
+def test_a_confirmation_is_not_role_checked():
+    s, notion, _ = go([msg(1, "GitLab", "x.io", "Thank you for applying to GitLab - AI Engineer", "We received your application")],
+                      [pg("GitLab", "Senior Software Engineer, NLP")])
+    assert notion.updates[0][1]["Status"] == "Applied"

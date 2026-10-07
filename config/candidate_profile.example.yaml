@@ -1,0 +1,14 @@
+# Example candidate profile (fictional). Copy to candidate_profile.yaml (gitignored)
+# and describe yourself. Short and professional only: no name, contact or employer.
+# It rides along on every classification call, so keep it near 80 tokens.
+
+summary: >
+  Senior data engineer. Builds production data platforms and LLM-backed features:
+  streaming pipelines, warehouse modelling, retrieval-augmented generation and
+  evaluation. Has led a small team and owns architecture end to end. Python, SQL,
+  cloud data stack. Open to remote roles.
+
+# Skills used day to day. The matcher treats these as direct evidence.
+baseline_skills: >
+  Python, SQL, BigQuery, dbt, Airflow, Kafka, Spark, Docker, LLM APIs,
+  prompt engineering, embeddings and hybrid retrieval, evaluation, data modelling.

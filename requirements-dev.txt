@@ -1,0 +1,6 @@
+# Dev/CI only — never installed in the production image (see Dockerfile).
+-r requirements.txt
+-e .
+pytest>=8.0
+ruff>=0.6
+pip-audit>=2.7

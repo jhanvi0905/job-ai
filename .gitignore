@@ -7,5 +7,26 @@ data/ai_usage.jsonl
 *.egg-info/
 logs/
 data/decisions.jsonl
+data/routing_preferences.json
 data/ledger.db*
 data/gmail_*.json
+
+# Product / tooling
+data/uploads/
+data/product.db*
+*.sqlite
+.env.*
+!.env.example
+frontend/.next
+node_modules
+.ruff_cache/
+.mypy_cache/
+
+# Personal data: kept local, examples are committed instead
+config/candidate_profile.yaml
+data/achievements_index.yaml
+data/rebuild_plan*.json
+
+# Editor / agent tooling
+.cursor/
+.DS_Store

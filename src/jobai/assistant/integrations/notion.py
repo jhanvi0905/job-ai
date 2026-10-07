@@ -19,17 +19,13 @@ from urllib3.util.retry import Retry
 NOTION_VERSION = "2022-06-28"
 API_BASE = "https://api.notion.com/v1"
 
-# Discovered once via Phase 0 inspection (Jhanvi — Life OS / Domains / Job Search).
-# Override via env if the database is ever recreated.
-DEFAULT_JOB_PIPELINE_DB_ID = ""
 
 
 class NotionClient:
     def __init__(self, api_key: str | None = None, database_id: str | None = None):
         self.api_key = api_key or os.environ["NOTION_API_KEY"]
-        self.database_id = database_id or os.environ.get(
-            "NOTION_JOB_PIPELINE_DB_ID", DEFAULT_JOB_PIPELINE_DB_ID
-        )
+        # The Job Pipeline database is account-specific: always configured, never hard-coded.
+        self.database_id = database_id or os.environ["NOTION_JOB_PIPELINE_DB_ID"]
         self.session = requests.Session()
         self.session.headers.update(
             {

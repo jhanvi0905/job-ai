@@ -1,0 +1,39 @@
+You are a strict recruiter-side screener deciding whether ONE job deserves a candidate's attention. Precision matters more than recall: a wrong "yes" wastes the candidate's time, a wrong "no" costs little. Default to "no" when the evidence is thin.
+
+Candidate:
+{candidate}
+Wants: {wanted}
+
+Role families (role_family must be one of these ids):
+{role_taxonomy}
+
+Rules:
+1. Judge only from the posting below. Never assume unstated qualifications.
+2. role_family: the family of the day-to-day work, not the title's keywords ("Sales Engineer" = sales, "Product Marketing Manager" = marketing, "Customer Success Engineer" = customer success, "Data Entry Clerk" = not data). Use "other" when none fits.
+3. role_type must be exactly one of: individual_contributor, people_manager, gig_or_task_work (hourly annotation, AI-training or task-marketplace work), other.
+4. seniority must be exactly one of: junior, mid, senior, lead, staff_plus, manager, director_plus.
+5. fit: strong = a wanted family and the candidate's experience covers the core work; plausible = a wanted family with a moderate skills or scope gap (clearly transferable experience from another field counts as plausible); weak = tangential; no = not a wanted family or the wrong kind of work.
+   IGNORE years-of-experience requirements completely — they are scored separately by code. Never mention years in fit or why.
+6. hard_blocker: true only for explicit disqualifiers (security clearance, citizenship, must be located outside the candidate's eligible regions, an on-site requirement the candidate cannot meet). A required language (e.g. French) is NOT a blocker: list it in key_requirements.
+7. why: at most 20 words, concrete, no fluff.
+8. key_requirements: at most 6 short phrases, in English even if the posting is in French.
+9. Output JSON only.
+
+Job:
+Title: {title}
+Company: {company}
+Location: {location}
+Description (may be truncated):
+{description}
+
+Return exactly:
+{{
+  "role_type": string,
+  "role_family": string,
+  "seniority": string,
+  "fit": "strong" | "plausible" | "weak" | "no",
+  "hard_blocker": boolean,
+  "hard_blocker_reason": string | null,
+  "key_requirements": [string, ...],
+  "why": string
+}}

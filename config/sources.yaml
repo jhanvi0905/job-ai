@@ -323,5 +323,5 @@ companies:
       identifier: "worldwide=true&q=data+engineer&sort=recent"
 
 # No SmartRecruiters seed yet — AI-native companies rarely publish there. The
-# adapter (src/sources/smartrecruiters.py) exists and works; add an identifier
+# adapter (src/jobai/engine/sources/smartrecruiters.py) exists and works; add an identifier
 # here once you find a relevant employer using it, no code change required.

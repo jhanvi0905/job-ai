@@ -1,0 +1,14 @@
+# Places inside a country, for ON-SITE / HYBRID eligibility in the product path
+# (rules_from_prefs -> location.country_aliases). ATS location strings rarely
+# name the country ("Toronto, ON"), so matching only "canada" misses most real
+# Canadian on-site roles. Regexes, case-insensitive, matched against the job's
+# location text. Add a country by adding its lowercase name as a key.
+# Ambiguous names are deliberately left out or guarded (London, Victoria, Hamilton,
+# Kingston, Waterloo exist elsewhere; Vancouver, WA is in the US).
+
+country_aliases:
+  canada:
+    - '\b(ontario|qu[eé]bec|british columbia|alberta|manitoba|saskatchewan|nova scotia|new brunswick|newfoundland|prince edward island|yukon|nunavut|northwest territories)\b'
+    - '\b(toronto|montr[eé]al|calgary|edmonton|ottawa|winnipeg|halifax|mississauga|brampton|markham|gatineau|laval|surrey|burnaby|regina|saskatoon|kitchener)\b'
+    - '\bvancouver\b(?!,?\s*(wa|washington)\b)'
+    - ',\s*(on|qc|bc|ab|mb|sk|ns|nb|nl|pe|pei)\b'

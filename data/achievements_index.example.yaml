@@ -1,0 +1,40 @@
+# Example achievement index (fictional). Copy to achievements_index.yaml (gitignored)
+# and replace with your own frozen achievements. Field vocabulary feeds the
+# deterministic retrieval in jobai.engine.achievements.retrieval.
+achievements:
+  - id: A01
+    title: Support-ticket triage assistant
+    summary: Built an LLM triage service with hybrid retrieval and a human-review fallback; cut first-response time by about 40% across 2,000 tickets a day.
+    role_families: [RF01, RF02]
+    skills: [Python, LLM APIs, prompt engineering, hybrid retrieval, evaluation]
+    system_patterns: [retrieval, human-in-the-loop, production AI]
+    seniority_signals: [owned architecture, led delivery]
+    business_signals: [customer support, cost reduction]
+    leadership_signals: [mentored two engineers]
+  - id: A02
+    title: Real-time order analytics pipeline
+    summary: Replaced nightly batch jobs with a streaming pipeline (Kafka to warehouse) so operations dashboards update within a minute.
+    role_families: [RF03]
+    skills: [Kafka, SQL, BigQuery, dbt, Airflow]
+    system_patterns: [streaming, data platform]
+    seniority_signals: [end-to-end ownership]
+    business_signals: [operations visibility]
+    leadership_signals: []
+  - id: A03
+    title: Demand forecasting model
+    summary: Trained and shipped a gradient-boosted forecasting model with backtesting and drift alerts; reduced stock-outs by about 15%.
+    role_families: [RF02, RF04]
+    skills: [Python, scikit-learn, feature engineering, model evaluation]
+    system_patterns: [classical ML, monitoring]
+    seniority_signals: [cross-team delivery]
+    business_signals: [inventory planning]
+    leadership_signals: []
+  - id: A04
+    title: Data-quality framework
+    summary: Introduced schema contracts and automated data tests across 120 tables; incidents caused by bad data fell from weekly to rare.
+    role_families: [RF03]
+    skills: [dbt, SQL, data testing, schema design]
+    system_patterns: [data platform, governance]
+    seniority_signals: [set team standards]
+    business_signals: [reliability]
+    leadership_signals: [ran the rollout across three teams]

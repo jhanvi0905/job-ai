@@ -1,0 +1,85 @@
+# Fly.io config for the product backend (src/jobai/product). One image, two process
+# groups:
+#   app    — FastAPI (uvicorn), public, behind Fly's TLS edge
+#   worker — scripts/product/run_worker.py (feed refresh, resume parse, catalog ingest)
+# The ops dashboard API (src/jobai/assistant/dashboard_api) is deliberately NOT deployed.
+#
+# Secrets (fly secrets set ...): DATABASE_URL (Supabase transaction pooler, :6543),
+# DIRECT_DATABASE_URL (direct/session, :5432 — used by release_command),
+# SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, [SUPABASE_JWT_SECRET], AIMLAPI_KEY,
+# CORS_ORIGINS, SENTRY_DSN, PAYMENT_WEBHOOK_SECRET. See docs/RUNBOOK.md.
+
+app = "jobmatch-api"            # change to your Fly app name (staging: pass --app)
+# yyz = Toronto: closest Fly region to Canadian users and to Supabase ca-central-1
+# (Montreal). Keep the app in the same region as the database: every request
+# makes several DB round-trips.
+primary_region = "yyz"
+kill_signal = "SIGTERM"
+kill_timeout = "120s"           # worker finishes its current task on SIGTERM (bounded by this)
+
+[build]
+  # GIT_SHA is passed by CI: flyctl deploy --build-arg GIT_SHA=$GITHUB_SHA
+
+[deploy]
+  # Runs once per deploy in a temporary machine, before any process is replaced.
+  # migrations/env.py prefers DIRECT_DATABASE_URL (DDL must not go through the
+  # transaction pooler). A failing migration aborts the deploy; nothing rolls out.
+  release_command = "alembic upgrade head"
+  strategy = "rolling"
+
+[env]
+  APP_ENV = "prod"              # staging deploys override with: flyctl deploy -e APP_ENV=staging
+  PORT = "8080"
+  LOG_FORMAT = "json"
+  SENTRY_TRACES_SAMPLE_RATE = "0.05"
+  CATALOG_INGEST_INTERVAL_MIN = "360"
+  SUPABASE_STORAGE_BUCKET = "resumes"
+
+[processes]
+  app = "sh -c 'exec uvicorn jobai.product.api.app:create_app --factory --host 0.0.0.0 --port 8080 --no-server-header --timeout-graceful-shutdown 20'"
+  worker = "python scripts/product/run_worker.py"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1      # no cold starts for the API
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 40
+    hard_limit = 60
+
+  # Routing check: liveness only (no DB), so a database blip doesn't pull every
+  # machine out of rotation.
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+# Deploy-gating check: a new app machine must be able to reach the database and
+# see the schema at the Alembic head before the rollout continues.
+[checks]
+  [checks.ready]
+    type = "http"
+    port = 8080
+    path = "/ready"
+    method = "GET"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+    processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  processes = ["worker"]

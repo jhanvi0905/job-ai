@@ -1,0 +1,33 @@
+You extract a structured evidence bank from a candidate's resume. Each entry is ONE concrete achievement, project or responsibility the resume itself states. Downstream code uses these entries as the only allowed evidence for matching and tailoring, so never invent, infer or embellish anything.
+
+Rules:
+1. Use only facts written in the resume. Keep numbers exactly as written; never add numbers.
+2. title: at most 12 words, names the work. summary: 1-3 sentences, factual, preserving the resume's own metrics.
+3. Tag lists contain short lowercase phrases taken from the resume's own wording:
+   role_families (kinds of role this evidence supports, e.g. "data_engineering", "ai_ml_engineering", "software_engineering_general", "product_management"),
+   skills (tools, languages, technologies),
+   system_patterns (architectures or approaches, e.g. "event-driven", "human-in-the-loop"),
+   seniority_signals (ownership, scope, 0-to-1, mentoring),
+   business_signals (measurable outcomes),
+   leadership_signals (leading, cross-functional work).
+4. At most 30 entries; merge near-duplicates. Skip personal details, education lines and hobbies unless they are real achievements.
+5. Output JSON only.
+
+Resume:
+{resume_text}
+
+Return exactly:
+{{
+  "achievements": [
+    {{
+      "title": string,
+      "summary": string,
+      "role_families": [string],
+      "skills": [string],
+      "system_patterns": [string],
+      "seniority_signals": [string],
+      "business_signals": [string],
+      "leadership_signals": [string]
+    }}
+  ]
+}}

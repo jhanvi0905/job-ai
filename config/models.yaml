@@ -3,7 +3,7 @@
 # Provider: AI/ML API (OpenAI-compatible), base_url below. Verify the exact
 # model slugs against your live AI/ML API dashboard (https://aimlapi.com/app)
 # BEFORE the first real run — model catalogs and pricing change, and this file
-# should never be trusted blindly. `scripts/verify_models.py` does this check
+# should never be trusted blindly. `scripts/dev/verify_models.py` does this check
 # for you: it sends one trivial tool-calling request per configured model and
 # confirms it returns well-formed structured output before anything is wired
 # into the pipeline (this is the project's Gate 1 equivalent).
@@ -21,7 +21,7 @@ provider:
 routing:
   classify_job:
     # Cheapest capable model with reliable structured-output / tool-calling.
-    # Placeholder slug — confirm via scripts/verify_models.py before use.
+    # Placeholder slug — confirm via scripts/dev/verify_models.py before use.
     model: "gpt-4o-mini"
     max_output_tokens: 350
     temperature: 0
@@ -38,7 +38,23 @@ routing:
     max_output_tokens: 80
     temperature: 0
 
-# ---- Gateway guardrails (src/ai/provider.py) --------------------------------
+  # ---- Product (multi-tenant SaaS) routes
+  parse_resume:
+    # Cheap model: one extraction call per uploaded resume.
+    # Placeholder slug — confirm via scripts/dev/verify_models.py before use.
+    model: "gpt-4o-mini"
+    max_output_tokens: 3000
+    temperature: 0
+
+  tailor_resume:
+    # Mid-tier model: rewrite quality matters, and every output is validated
+    # in code against the user's evidence bank anyway.
+    # Placeholder slug — confirm via scripts/dev/verify_models.py before use.
+    model: "gpt-4o"
+    max_output_tokens: 1500
+    temperature: 0.2
+
+# ---- Gateway guardrails (src/jobai/engine/ai/provider.py) --------------------------------
 # These protect the AI/ML API credit. The gateway checks them BEFORE every HTTP
 # attempt; a blocked call makes no request and is recorded in the ledger as
 # 'budget_exceeded'. A normal daily run costs ~$0.02-0.04, so these leave ~4x
@@ -50,15 +66,28 @@ gateway:
   backoff_max_s: 20.0
   circuit_breaker_failures: 5   # consecutive failed calls -> stop calling this run
 
+# ---- Pricing (USD per 1M tokens) -------------------------------------------
+# Fallback used by the gateway ONLY when the provider's response does not report
+# its own cost (AI/ML API normally returns meta.usage.usd_spent). Without an
+# entry here a call with no reported cost is booked at $0, which silently
+# disables the per-user/per-day $ guards — so every model under `routing` must
+# have a row (tests/product/test_production.py enforces this).
+# VERIFY: these are OpenAI list prices as of 2026; AI/ML API resells at its own
+# rates — check https://aimlapi.com/ai-ml-api-pricing and update before launch.
+pricing:
+  gpt-4o-mini:
+    in_per_mtok: 0.15    # VERIFY against provider dashboard
+    out_per_mtok: 0.60   # VERIFY
+  gpt-4o:
+    in_per_mtok: 2.50    # VERIFY
+    out_per_mtok: 10.00  # VERIFY
+
 budget:
   per_run_usd: 0.15
   per_day_usd: 0.30             # summed across ALL runs today (from the ledger)
   max_calls_per_run: 400        # backstop if a provider ever stops reporting cost
 
-# Future stages (not built in MVP, kept here so routing stays config-driven
-# when they're added — see PRD §18):
+# Future stages (not built yet, kept here so routing stays config-driven):
 future:
-  tailor_resume:
-    model: null
   interview_prep:
     model: null

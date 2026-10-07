@@ -1,0 +1,546 @@
+# Product catalog sources (src/jobai/product/services/catalog.py) — broad Canadian hiring.
+# The legacy single-user pipeline keeps config/sources.yaml; the catalog ingests
+# BOTH (this file + sources.yaml when include_legacy_sources is true), de-duplicated
+# by (type, identifier), with the same fetch concurrency as the legacy run
+# (process_job.FETCH_WORKERS boards in parallel, aggregators sequential).
+#
+# Every board below was fetched ONCE on 2026-10-07 from the public ATS API and
+# returned HTTP 200 with jobs. jobs = total open postings that day; canada = postings
+# whose location named Canada / a Canadian city or province (SmartRecruiters: first
+# 100 postings only). 122 employers were tried: 74 boards answered with jobs; 46 were
+# kept (>= 3 Canadian postings, not already in sources.yaml, not too heavy to page).
+# Dropped: 37 tokens that 404'd (or answered empty) on Greenhouse/Lever/Ashby (e.g. Shopify, Clio, Coveo,
+# FreshBooks, ecobee, Visier, Dayforce, HubSpot, Canva), 11 SmartRecruiters ids that
+# answered with zero postings (Visa, IKEA, Canadian Tire, Sobeys, Telus Digital, ...),
+# and 28 live boards with no/very few Canadian roles or thousands of postings
+# (Datadog, Figma, Intercom, Plaid, Bosch, Accor, DoorDash, ...).
+# Re-verify by fetching each board once before adding or removing entries (never in tests).
+
+include_legacy_sources: true
+
+companies:
+  # --- Fintech & banking ---
+  - name: Wealthsimple
+    priority: A
+    sector: fintech
+    source:
+      type: ashby
+      identifier: wealthsimple
+    verified: {date: '2026-10-07', jobs: 43, canada: 43}
+
+  - name: Neo Financial
+    priority: A
+    sector: fintech
+    source:
+      type: ashby
+      identifier: neofinancial
+    verified: {date: '2026-10-07', jobs: 73, canada: 73}
+
+  - name: KOHO
+    priority: B
+    sector: fintech
+    source:
+      type: ashby
+      identifier: koho
+    verified: {date: '2026-10-07', jobs: 8, canada: 8}
+
+  - name: Float
+    priority: A
+    sector: fintech
+    source:
+      type: ashby
+      identifier: float
+    verified: {date: '2026-10-07', jobs: 21, canada: 21}
+
+  - name: Brex
+    priority: A
+    sector: fintech
+    source:
+      type: greenhouse
+      identifier: brex
+    verified: {date: '2026-10-07', jobs: 287, canada: 37}
+
+  - name: Ramp
+    priority: A
+    sector: fintech
+    source:
+      type: ashby
+      identifier: ramp
+    verified: {date: '2026-10-07', jobs: 161, canada: 22}
+
+  - name: Affirm
+    priority: A
+    sector: fintech
+    source:
+      type: greenhouse
+      identifier: affirm
+    verified: {date: '2026-10-07', jobs: 187, canada: 61}
+
+  - name: Stripe
+    priority: A
+    sector: fintech
+    source:
+      type: greenhouse
+      identifier: stripe
+    verified: {date: '2026-10-07', jobs: 728, canada: 58}
+
+  - name: Coinbase
+    priority: B
+    sector: fintech
+    source:
+      type: greenhouse
+      identifier: coinbase
+    verified: {date: '2026-10-07', jobs: 224, canada: 10}
+
+  - name: PolicyMe
+    priority: B
+    sector: fintech
+    source:
+      type: lever
+      identifier: policyme
+    verified: {date: '2026-10-07', jobs: 11, canada: 10}
+
+  - name: Trulioo
+    priority: B
+    sector: fintech
+    source:
+      type: ashby
+      identifier: trulioo
+    verified: {date: '2026-10-07', jobs: 27, canada: 18}
+
+  - name: Clearco
+    priority: C
+    sector: fintech
+    source:
+      type: ashby
+      identifier: clearco
+    verified: {date: '2026-10-07', jobs: 4, canada: 4}
+
+  # --- Commerce & retail tech ---
+  - name: Lightspeed Commerce
+    priority: A
+    sector: commerce
+    source:
+      type: ashby
+      identifier: lightspeedhq
+    verified: {date: '2026-10-07', jobs: 135, canada: 89}
+
+  - name: Faire
+    priority: A
+    sector: commerce
+    source:
+      type: greenhouse
+      identifier: faire
+    verified: {date: '2026-10-07', jobs: 77, canada: 21}
+
+  - name: Instacart
+    priority: A
+    sector: commerce
+    source:
+      type: greenhouse
+      identifier: instacart
+    verified: {date: '2026-10-07', jobs: 122, canada: 53}
+
+  - name: Toast
+    priority: B
+    sector: commerce
+    source:
+      type: greenhouse
+      identifier: toast
+    verified: {date: '2026-10-07', jobs: 326, canada: 19}
+
+  - name: Lyft
+    priority: A
+    sector: commerce
+    source:
+      type: greenhouse
+      identifier: lyft
+    verified: {date: '2026-10-07', jobs: 193, canada: 85}
+
+  - name: Airbnb
+    priority: B
+    sector: commerce
+    source:
+      type: greenhouse
+      identifier: airbnb
+    verified: {date: '2026-10-07', jobs: 160, canada: 12}
+
+  - name: Hopper
+    priority: C
+    sector: commerce
+    source:
+      type: ashby
+      identifier: hopper
+    verified: {date: '2026-10-07', jobs: 19, canada: 6}
+
+  # --- SaaS & software ---
+  - name: Jobber
+    priority: A
+    sector: saas
+    source:
+      type: ashby
+      identifier: jobber
+    verified: {date: '2026-10-07', jobs: 43, canada: 41}
+
+  - name: 1Password
+    priority: A
+    sector: saas
+    source:
+      type: ashby
+      identifier: 1password
+    verified: {date: '2026-10-07', jobs: 69, canada: 45}
+
+  - name: Okta
+    priority: A
+    sector: saas
+    source:
+      type: greenhouse
+      identifier: okta
+    verified: {date: '2026-10-07', jobs: 376, canada: 82}
+
+  - name: Samsara
+    priority: A
+    sector: saas
+    source:
+      type: greenhouse
+      identifier: samsara
+    verified: {date: '2026-10-07', jobs: 241, canada: 27}
+
+  - name: Later
+    priority: A
+    sector: saas
+    source:
+      type: greenhouse
+      identifier: later
+    verified: {date: '2026-10-07', jobs: 44, canada: 26}
+
+  - name: Benevity
+    priority: A
+    sector: saas
+    source:
+      type: ashby
+      identifier: benevity
+    verified: {date: '2026-10-07', jobs: 22, canada: 22}
+
+  - name: Xero
+    priority: A
+    sector: saas
+    source:
+      type: ashby
+      identifier: xero
+    verified: {date: '2026-10-07', jobs: 115, canada: 22}
+
+  - name: Asana
+    priority: B
+    sector: saas
+    source:
+      type: greenhouse
+      identifier: asana
+    verified: {date: '2026-10-07', jobs: 96, canada: 13}
+
+  - name: Achievers
+    priority: B
+    sector: saas
+    source:
+      type: lever
+      identifier: achievers
+    verified: {date: '2026-10-07', jobs: 16, canada: 12}
+
+  - name: Dropbox
+    priority: B
+    sector: saas
+    source:
+      type: greenhouse
+      identifier: dropbox
+    verified: {date: '2026-10-07', jobs: 35, canada: 11}
+
+  - name: Twilio
+    priority: B
+    sector: saas
+    source:
+      type: greenhouse
+      identifier: twilio
+    verified: {date: '2026-10-07', jobs: 131, canada: 8}
+
+  - name: Klue
+    priority: B
+    sector: saas
+    source:
+      type: ashby
+      identifier: klue
+    verified: {date: '2026-10-07', jobs: 10, canada: 8}
+
+  - name: Gusto
+    priority: C
+    sector: saas
+    source:
+      type: greenhouse
+      identifier: gusto
+    verified: {date: '2026-10-07', jobs: 95, canada: 7}
+
+  - name: Ada
+    priority: C
+    sector: saas
+    source:
+      type: greenhouse
+      identifier: ada18
+    verified: {date: '2026-10-07', jobs: 8, canada: 5}
+
+  - name: Hootsuite
+    priority: C
+    sector: saas
+    source:
+      type: greenhouse
+      identifier: hootsuite
+    verified: {date: '2026-10-07', jobs: 9, canada: 3}
+
+  - name: Snowflake
+    priority: B
+    sector: saas
+    source:
+      type: ashby
+      identifier: snowflake
+    verified: {date: '2026-10-07', jobs: 355, canada: 9}
+
+  - name: Cohere
+    priority: A
+    sector: saas
+    source:
+      type: ashby
+      identifier: cohere
+    verified: {date: '2026-10-07', jobs: 130, canada: 77}
+
+  - name: Miovision
+    priority: B
+    sector: saas
+    source:
+      type: ashby
+      identifier: miovision
+    verified: {date: '2026-10-07', jobs: 19, canada: 16}
+
+  - name: D2L
+    priority: B
+    sector: saas
+    source:
+      type: greenhouse
+      identifier: d2l
+    verified: {date: '2026-10-07', jobs: 11, canada: 8}
+
+  - name: Mozilla
+    priority: B
+    sector: saas
+    source:
+      type: greenhouse
+      identifier: mozilla
+    verified: {date: '2026-10-07', jobs: 91, canada: 17}
+
+  # --- Health ---
+  - name: Maple
+    priority: B
+    sector: health
+    source:
+      type: lever
+      identifier: getmaple
+    verified: {date: '2026-10-07', jobs: 14, canada: 14}
+
+  - name: League
+    priority: B
+    sector: health
+    source:
+      type: greenhouse
+      identifier: leagueinc
+    verified: {date: '2026-10-07', jobs: 11, canada: 8}
+
+  - name: AlayaCare
+    priority: B
+    sector: health
+    source:
+      type: greenhouse
+      identifier: alayacare
+    verified: {date: '2026-10-07', jobs: 25, canada: 18}
+
+  # --- Media, games & consumer ---
+  - name: Ubisoft
+    priority: A
+    sector: media
+    source:
+      type: smartrecruiters
+      identifier: Ubisoft2
+    verified: {date: '2026-10-07', jobs: 332, canada: 39}
+
+  - name: Pinterest
+    priority: B
+    sector: media
+    source:
+      type: greenhouse
+      identifier: pinterest
+    verified: {date: '2026-10-07', jobs: 174, canada: 12}
+
+  - name: Reddit
+    priority: B
+    sector: media
+    source:
+      type: greenhouse
+      identifier: reddit
+    verified: {date: '2026-10-07', jobs: 150, canada: 12}
+
+  - name: Wattpad
+    priority: C
+    sector: media
+    source:
+      type: lever
+      identifier: wattpad
+    verified: {date: '2026-10-07', jobs: 17, canada: 3}
+
+  # --- Himalayas (remote aggregator), Canada-eligible, non-AI categories. Each query returns ~20 (pagination is broken upstream). ---
+  - name: "Himalayas: Canada · Marketing Manager"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=marketing+manager&sort=recent"
+    verified: {date: '2026-10-07', jobs: 20, canada: 20}
+
+  - name: "Himalayas: Canada · Growth Marketing"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=growth+marketing&sort=recent"
+    verified: {date: '2026-10-07', jobs: 19, canada: 19}
+
+  - name: "Himalayas: Canada · Customer Success"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=customer+success&sort=recent"
+    verified: {date: '2026-10-07', jobs: 19, canada: 19}
+
+  - name: "Himalayas: Canada · Customer Support"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=customer+support&sort=recent"
+    verified: {date: '2026-10-07', jobs: 20, canada: 20}
+
+  - name: "Himalayas: Canada · Account Executive"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=account+executive&sort=recent"
+    verified: {date: '2026-10-07', jobs: 19, canada: 19}
+
+  - name: "Himalayas: Canada · Sales Development Representative"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=sales+development+representative&sort=recent"
+    verified: {date: '2026-10-07', jobs: 20, canada: 20}
+
+  - name: "Himalayas: Canada · Product Manager"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=product+manager&sort=recent"
+    verified: {date: '2026-10-07', jobs: 20, canada: 20}
+
+  - name: "Himalayas: Canada · Project Manager"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=project+manager&sort=recent"
+    verified: {date: '2026-10-07', jobs: 20, canada: 20}
+
+  - name: "Himalayas: Canada · Operations Manager"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=operations+manager&sort=recent"
+    verified: {date: '2026-10-07', jobs: 20, canada: 20}
+
+  - name: "Himalayas: Canada · Accountant"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=accountant&sort=recent"
+    verified: {date: '2026-10-07', jobs: 20, canada: 20}
+
+  - name: "Himalayas: Canada · Financial Analyst"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=financial+analyst&sort=recent"
+    verified: {date: '2026-10-07', jobs: 20, canada: 20}
+
+  - name: "Himalayas: Canada · Bookkeeper"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=bookkeeper&sort=recent"
+    verified: {date: '2026-10-07', jobs: 17, canada: 17}
+
+  - name: "Himalayas: Canada · Recruiter"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=recruiter&sort=recent"
+    verified: {date: '2026-10-07', jobs: 19, canada: 19}
+
+  - name: "Himalayas: Canada · Human Resources"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=human+resources&sort=recent"
+    verified: {date: '2026-10-07', jobs: 19, canada: 19}
+
+  - name: "Himalayas: Canada · UX Designer"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=UX+designer&sort=recent"
+    verified: {date: '2026-10-07', jobs: 20, canada: 20}
+
+  - name: "Himalayas: Canada · Data Analyst"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=data+analyst&sort=recent"
+    verified: {date: '2026-10-07', jobs: 19, canada: 19}
+
+  - name: "Himalayas: Canada · Business Analyst"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=business+analyst&sort=recent"
+    verified: {date: '2026-10-07', jobs: 19, canada: 19}
+
+  - name: "Himalayas: Canada · Security Analyst"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=security+analyst&sort=recent"
+    verified: {date: '2026-10-07', jobs: 20, canada: 20}
+
+  - name: "Himalayas: Canada · Software Engineer"
+    priority: B
+    sector: aggregator
+    source:
+      type: himalayas
+      identifier: "country=CA&q=software+engineer&sort=recent"
+    verified: {date: '2026-10-07', jobs: 20, canada: 20}

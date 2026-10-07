@@ -1,0 +1,377 @@
+# Role taxonomy v2 — the PRODUCT path's role families (docs/COVERAGE.md).
+#
+# The legacy single-user pipeline keeps config/roles.yaml (RF01–RF04) and
+# prompts/classify_job_v2.txt untouched; `legacy_aliases` below maps those ids
+# (and the old role_type names that resume parsing emits) onto these families.
+#
+# Per family:
+#   label            shown to users (GET /role-families)
+#   summary          one line for the classify_job_v3 prompt (keep it short: it costs tokens per job)
+#   title_signals    Stage 0: case-insensitive regexes over the job TITLE; any hit = the title belongs here
+#   negative_signals Stage 0: a hit cancels this family's positive match ("Sales Engineer" is not
+#                    software engineering; "Product Marketing Manager" is not product management)
+#   seniority        ladder hints (docs + reviewers) and `not_too_senior`: title phrases where a
+#                    "too senior" keyword is part of an ordinary title ("Staff Accountant")
+#   vocab            typical requirement vocabulary; Stage 0 keyword_score (ranking only)
+#   adjacent         families a career switcher in this family commonly moves to; the user
+#                    must OPT IN to each (prefs.adjacent_families) before it passes the gates
+#
+# Regex notes: titles are matched with re.IGNORECASE; prefer \b word boundaries;
+# French titles are listed explicitly (Quebec postings are often French-only).
+# Every change here must keep tests/product/test_coverage_eval.py green.
+
+version: 2
+
+# Stage 0 rejects these titles for every family: task/gig work that looks like a role.
+global_negative_signals:
+  - '\b(ai|llm|model)\s+(trainer|tutor|rater|evaluator)'
+  - '\bannotat(or|ion)'
+  - '\bdata label'
+  - '\bfreelance (writer|tutor)'
+
+# Old ids -> v2 ids. Used for stored prefs, achievement tags and model output.
+legacy_aliases:
+  RF01: ai_ml
+  RF02: ai_ml
+  RF03: data_analytics
+  RF04: ai_ml
+  ai_ml_engineering: ai_ml
+  research_scientist: ai_ml
+  data_engineering: data_analytics
+  data_science: data_analytics
+  data_analysis: data_analytics
+  analytics: data_analytics
+  software_engineering_general: software_engineering
+  software_engineering: software_engineering
+  product_management: product_management
+  solutions_or_customer_facing: sales
+  customer_support: customer_success
+  project_management: operations
+  program_management: operations
+  human_resources: people_hr
+  recruiting: people_hr
+  accounting: finance
+  it: it_security
+  security: it_security
+  ux_design: design
+
+families:
+  software_engineering:
+    label: Software engineering
+    summary: builds and ships software (backend, frontend, mobile, QA, DevOps/SRE, engineering managers)
+    title_signals:
+      - '\bsoftware (engineer|developer|architect|development engineer)'
+      - '\b(back[- ]?end|front[- ]?end|full[- ]?stack|mobile|ios|android|web|embedded|firmware|game|platform|application|qa|test|automation|build|release|devops|java|python|golang|ruby|rails|react|node(\.js)?|\.net|c\+\+|c#|php|typescript|javascript|rust|kotlin|swift|scala)\s+(engineer|developer|programmer)'
+      - '\bdeveloper\b'
+      - '\bprogrammer\b'
+      - '\bsdet\b'
+      - '\bsite reliability\b'
+      - '\bsre\b'
+      - '\bdevops\b'
+      - '\bengineering (manager|lead)'
+      - '\bfounding engineer'
+      - 'd[ée]veloppeu(r|se)'
+      - '\bing[ée]nieur(e)? (logiciel|d[ée]veloppement)'
+    negative_signals:
+      - '\bbusiness develop'
+      - '\b(sales|solutions?|pre-?sales|customer success|support|field|forward deployed) engineer'
+      - '\bdeveloper (relations|advocate|evangelist)'
+      - '\bsalesforce\b'
+      - '\b(real estate|property|land) developer'
+      - '\binstructional'
+    seniority:
+      ladder: [junior/new grad, developer/engineer, senior, staff/lead, principal, engineering manager, director]
+      not_too_senior: []
+    vocab: [python, java, javascript, typescript, react, apis, microservices, aws, kubernetes, ci/cd, sql, testing]
+    adjacent: [ai_ml, data_analytics, it_security, product_management]
+
+  data_analytics:
+    label: Data & analytics
+    summary: analyses or engineers data (data/BI/business analysts, analytics engineers, data engineers, data scientists)
+    title_signals:
+      - '\bdata (analyst|scientist|engineer|architect|modell?er|steward|specialist|science|engineering|analytics|visuali[sz]ation)'
+      - '\banalytics\b'
+      - '\bbusiness intelligence\b'
+      - '\bbi (analyst|developer|engineer|specialist|lead)'
+      - '\b(reporting|insights?|business|product|marketing|growth|pricing|research|quantitative|statistical) analyst'
+      - '\bstatistician\b'
+      - '\b(power bi|tableau|looker|sql|etl) (developer|analyst|engineer)'
+      - '\banalyste\b'
+      - '\bdonn[ée]es\b'
+      - '\bscientifique des donn'
+    negative_signals:
+      - '\bdata entry'
+      - '\bdata cent(er|re)'
+      - '\bdata (protection|privacy)'
+      - '\b(financial|finance|credit|investment|security|cyber|soc|it|systems|operations|hr|people) analyst'
+      - '\banalyste (financier|financi[eè]re|cr[ée]dit|s[ée]curit[ée])'
+      - '\bsaisie de donn'
+    seniority:
+      ladder: [junior analyst, analyst, senior analyst, lead/principal, analytics manager, director of analytics]
+      not_too_senior: []
+    vocab: [sql, python, excel, tableau, power bi, looker, dbt, statistics, a/b testing, dashboards, etl, data modeling]
+    adjacent: [ai_ml, software_engineering, finance, product_management, marketing, operations]
+
+  ai_ml:
+    label: AI & machine learning
+    summary: builds ML/AI systems (ML/AI/LLM engineers, applied/research scientists, MLOps)
+    title_signals:
+      - '\b(ai|ml|mlops|llm|llms|nlp|genai)\b'
+      - '\bmachine learning'
+      - '\bdeep learning'
+      - '\bcomputer vision'
+      - '\bgen(erative)? ?ai\b'
+      - '\bapplied scientist'
+      - '\bresearch (scientist|engineer)'
+      - '\bprompt engineer'
+      - '\bintelligence artificielle'
+      - '\bapprentissage automatique'
+    negative_signals:
+      - '\b(sales|account|marketing|recruit|partnership|business development)'
+      - '\bproduct (manager|owner|marketing)'
+      - '\bdesigner\b'
+    seniority:
+      ladder: [ml engineer, senior, staff/lead, principal, ml manager, head of ai]
+      not_too_senior: []
+    vocab: [python, pytorch, tensorflow, llm, rag, mlops, model deployment, evaluation, embeddings, nlp, computer vision, spark]
+    adjacent: [data_analytics, software_engineering, product_management]
+
+  product_management:
+    label: Product management
+    summary: owns what gets built (product managers/owners, technical PMs, product ops)
+    title_signals:
+      - '\bproduct (manager|owner|lead|director|management|operations|ops)\b'
+      - '\b(head|vp|vice president|director) of product\b'
+      - '\b(gestionnaire|chef|propri[ée]taire) de produits?'
+    negative_signals:
+      - '\bproduct marketing'
+      - '\bproduct (designer|analyst|engineer|specialist|support|consultant)'
+    seniority:
+      ladder: [associate pm, product manager, senior pm, group/principal pm, director of product, vp product]
+      not_too_senior: []
+    vocab: [roadmap, discovery, user research, prioritization, agile, stakeholders, metrics, experimentation, requirements, go-to-market]
+    adjacent: [software_engineering, data_analytics, design, marketing, operations, customer_success]
+
+  design:
+    label: Design (UX/UI)
+    summary: designs products and experiences (UX/UI/product designers, UX researchers, content designers)
+    title_signals:
+      - '\b(ux|ui|product|interaction|visual|graphic|service|content|web|motion|brand|experience|digital)\s+designer'
+      - '\bux\b'
+      - '\bui/ux\b'
+      - '\buser experience'
+      - '\b(ux|user) research'
+      - '\bdesign (lead|manager|director|systems)'
+      - '\bdesigner\b'
+      - '\bconcept(eur|rice)\b'
+    negative_signals:
+      - '\b(interior|fashion|landscape|kitchen|floral|lighting) designer'
+      - '\b(instructional|learning|curriculum) designer'
+      - '\b(circuit|electrical|mechanical|hardware|asic|chip|pcb|structural|civil) design'
+    seniority:
+      ladder: [junior designer, designer, senior, lead, principal, design manager, head of design]
+      not_too_senior: []
+    vocab: [figma, prototyping, user research, design systems, wireframes, usability testing, accessibility, interaction design]
+    adjacent: [product_management, marketing, software_engineering]
+
+  marketing:
+    label: Marketing & communications
+    summary: grows demand and brand (marketing managers, growth, product marketing, content, brand, communications)
+    title_signals:
+      - '\bmarketing\b'
+      - '\bmarketer\b'
+      - '\bgrowth (manager|lead|marketer|specialist|strategist)'
+      - '\bdemand gen'
+      - '\b(seo|sem|ppc)\b'
+      - '\bsocial media\b'
+      - '\bcontent (strategist|manager|writer|lead|specialist|producer|creator)'
+      - '\bcopywriter\b'
+      - '\bbrand (manager|strategist|lead|director|specialist)'
+      - '\bcommunications?\b'
+      - '\bpublic relations\b'
+      - '\bcommunity manager'
+      - '\bevents? (manager|coordinator|specialist)'
+      - '\blifecycle\b'
+      - '\bdeveloper (relations|advocate)'
+      - '\bmarketing\b|\bmercatique\b'
+    negative_signals:
+      - '\btelemarket'
+      - '\bnetwork marketing'
+      - '\b(data|telecommunications?) (engineer|technician)'
+    seniority:
+      ladder: [coordinator, specialist, manager, senior manager, director, vp marketing, cmo]
+      not_too_senior: []
+    vocab: [campaigns, seo, paid media, content, brand, hubspot, marketo, google analytics, positioning, go-to-market, email marketing, budget]
+    adjacent: [product_management, sales, design, data_analytics]
+
+  sales:
+    label: Sales & account management
+    summary: sells and grows accounts (account executives, SDR/BDR, account managers, sales/solutions engineers)
+    title_signals:
+      - '\bsales\b'
+      - '\baccount (executive|manager|director|lead|representative)'
+      - '\b(territory|regional|key account|channel|partner|client|relationship) manager'
+      - '\bbusiness develop'
+      - '\b(bdr|sdr)\b'
+      - '\b(sales|solutions?|pre-?sales) (engineer|consultant|architect)'
+      - '\bpartnerships?\b'
+      - '\bventes?\b'
+      - '\brepr[ée]sentant(e)?\b'
+      - '\bd[ée]veloppement des affaires'
+    negative_signals:
+      - '\bsales ?ops'
+      - '\b(sales|revenue) operations'
+      - '\bsalesforce\b'
+      - '\bsales (data )?analyst'
+      - '\bservice (client|à la client)'
+    seniority:
+      ladder: [sdr/bdr, account executive, senior ae, enterprise ae, sales manager, director of sales, vp sales]
+      not_too_senior: []
+    vocab: [quota, pipeline, prospecting, crm, salesforce, negotiation, closing, saas sales, account planning, renewals]
+    adjacent: [customer_success, marketing, operations]
+
+  customer_success:
+    label: Customer success & support
+    summary: keeps customers successful (CSMs, onboarding/implementation, customer support and service)
+    title_signals:
+      - '\b(customer|client) success'
+      - '\b(customer|client) (support|service|services|experience|care|onboarding|operations|advocate)'
+      - '\bsupport (specialist|agent|representative|associate|analyst|engineer|lead|manager|advisor|consultant)'
+      - '\btechnical support'
+      - '\b(implementation|onboarding) (specialist|consultant|manager|lead|coordinator)'
+      - '\b(contact|call) cent(er|re)'
+      - '\brenewals?\b'
+      - '\bservice (à la|a la) client[eè]le'
+      - '\b(soutien|succ[eè]s|exp[ée]rience) (à la clientèle|client)'
+      - '\bconseill(er|[eè]re)\b.*client'
+    negative_signals:
+      - '\b(it|desktop|technical it) support'
+      - '\bhelp ?desk'
+      - '\bservice desk'
+      - '\bpeople support'
+    seniority:
+      ladder: [support specialist, csm, senior csm, team lead, cs manager, head of cs, vp customer success]
+      not_too_senior: []
+    vocab: [onboarding, retention, renewals, churn, zendesk, gainsight, customer training, escalations, saas, account health, nps]
+    adjacent: [sales, operations, product_management, it_security]
+
+  operations:
+    label: Operations, program & project management
+    summary: runs the business (operations, program/project managers, supply chain, admin, rev/sales ops)
+    title_signals:
+      - '\boperations?\b (manager|coordinator|associate|analyst|specialist|lead|director|generalist)'
+      - '\b(business|revenue|sales|marketing|people|strategy (and|&)) operations'
+      - '\b(bizops|revops)\b'
+      - '\b(program|project|portfolio|delivery) (manager|coordinator|lead|director|officer|analyst|specialist)'
+      - '\bscrum master'
+      - '\bagile coach'
+      - '\bpmo\b'
+      - '\bchief of staff'
+      - '\b(supply chain|logistics|procurement|purchasing|inventory|fulfil?ment|warehouse|facilities|office|vendor) (manager|coordinator|analyst|specialist|lead|associate|administrator)'
+      - '\b(administrative|executive) assistant'
+      - '\boffice administrator'
+      - '\bdata entry'
+      - '\b(charg[ée]e?|gestionnaire|chef) de projets?'
+      - '\bcoordonnat(eur|rice)'
+    negative_signals:
+      - '\b(it|security|network|cloud|devops|platform) operations'
+    seniority:
+      ladder: [coordinator, specialist/analyst, manager, senior manager, director, vp operations, coo]
+      not_too_senior: []
+    vocab: [process improvement, project planning, stakeholder management, budgets, vendors, jira, excel, reporting, risk management, pmp]
+    adjacent: [product_management, finance, customer_success, sales, people_hr]
+
+  finance:
+    label: Finance & accounting
+    summary: manages money and reporting (accountants, financial/FP&A analysts, controllers, payroll, audit, tax)
+    title_signals:
+      - '\baccountant\b'
+      - '\baccounting\b'
+      - '\bbookkeep'
+      - '\b(controller|comptroller)\b'
+      - '\bfinancial (analyst|planning|reporting|advisor|planner|accountant)'
+      - '\bfp&a\b'
+      - '\bpayroll\b'
+      - '\baccounts (payable|receivable)'
+      - '\btax (manager|analyst|specialist|accountant|associate)'
+      - '\baudit(or)?\b'
+      - '\btreasury\b'
+      - '\bfinance (manager|director|business partner|analyst|associate|lead|specialist)'
+      - '\b(credit|investment|risk) analyst'
+      - '\bunderwrit'
+      - '\bactuar'
+      - '\bbilling (specialist|analyst|coordinator)'
+      - '\bcollections? (specialist|agent|officer)'
+      - '\bcomptab'
+      - '\banalyste financi'
+      - '\bpaie\b'
+      - '\bfiscalit'
+    negative_signals:
+      - '\b(it|security|cyber|soc) audit'
+      - '\bfinancial crime'
+    seniority:
+      ladder: [clerk/junior accountant, staff accountant, senior accountant, accounting manager, controller, director of finance, cfo]
+      not_too_senior: ['\bstaff (accountant|auditor)']
+    vocab: [gaap, ifrs, month-end close, reconciliations, excel, erp, netsuite, sap, budgeting, forecasting, cpa, audit]
+    adjacent: [data_analytics, operations]
+
+  people_hr:
+    label: People, HR & recruiting
+    summary: hires and supports people (recruiters, HR generalists/business partners, L&D, total rewards)
+    title_signals:
+      - '\bhr\b'
+      - '\bhuman resources'
+      - '\bpeople (partner|operations|ops|business partner|lead|manager|generalist|coordinator|experience)'
+      - '\brecruit(er|ing|ment)'
+      - '\btalent (acquisition|partner|sourcer|manager|development|management)'
+      - '\bsourcer\b'
+      - '\bhrbp\b'
+      - '\b(compensation|total rewards|benefits) (specialist|analyst|manager|partner|lead)'
+      - '\blearning (and|&) development'
+      - '\bl&d\b'
+      - '\btraining (specialist|coordinator|manager|lead)'
+      - '\b(instructional|learning|curriculum) designer'
+      - '\bemployee (relations|experience)'
+      - '\bressources humaines'
+      - '\brecrut(eur|euse|ement)'
+      - '\bconseill(er|[eè]re) en (rh|ressources)'
+    negative_signals:
+      - '\bhr (data|systems?) (engineer|developer)'
+    seniority:
+      ladder: [coordinator, recruiter/generalist, senior, hrbp/lead, hr manager, director of people, chro]
+      not_too_senior: []
+    vocab: [full-cycle recruiting, ats, employee relations, onboarding, hris, workday, compensation, employment standards, training, sourcing]
+    adjacent: [operations, customer_success]
+
+  it_security:
+    label: IT, infrastructure & security
+    summary: runs IT and keeps it secure (IT support, sysadmins, network/cloud engineers, security analysts)
+    title_signals:
+      - '\bit (support|specialist|analyst|manager|administrator|technician|operations|director|lead)'
+      - '\b(help|service) ?desk'
+      - '\bdesktop support'
+      - '\b(system|systems|network|cloud|database|m365|microsoft 365|windows|linux|infrastructure) (administrator|admin|engineer|architect|analyst|specialist)'
+      - '\bsysadmin'
+      - '\bdba\b'
+      - '\bsecurity (analyst|engineer|architect|specialist|operations|manager|consultant)'
+      - '\bcyber ?security'
+      - '\bcybers[ée]curit'
+      - '\binformation security|\binfosec\b'
+      - '\bsoc (analyst|engineer)'
+      - '\bpen(etration)? ?test'
+      - '\b(iam|identity (and|&) access)'
+      - '\bgrc\b'
+      - '\bsolutions architect'
+      - '\bsalesforce (administrator|admin|developer|architect|consultant)'
+      - '\bdata cent(er|re) technician'
+      - '\btechnicien(ne)? (informatique|r[ée]seau)'
+      - '\b(soutien|support) informatique'
+      - '\badministrat(eur|rice) (syst[eè]mes?|r[ée]seaux?)'
+    negative_signals:
+      - '\bsecurity (guard|officer)'
+      - '\bsocial (network|media)'
+    seniority:
+      ladder: [it support tier 1, tier 2/sysadmin, senior engineer, architect/lead, it manager, director of it, ciso/cio]
+      not_too_senior: []
+    vocab: [active directory, azure, aws, networking, windows, linux, siem, incident response, itil, m365, firewalls, iso 27001]
+    adjacent: [software_engineering, customer_success]

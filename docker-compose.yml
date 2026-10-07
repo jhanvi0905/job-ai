@@ -1,0 +1,81 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-jobai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: ${POSTGRES_DB:-jobai}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    environment:
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET:-}  # the name services/billing.py reads
+      AIMLAPI_KEY: ${AIMLAPI_KEY:-}
+      # Local Postgres for offline dev. Against Supabase, set DATABASE_URL (pooler)
+      # and DIRECT_DATABASE_URL (for migrations) in .env and drop the db service.
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-jobai}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-jobai}
+      DIRECT_DATABASE_URL: ${DIRECT_DATABASE_URL:-}
+      # Optional locally; without SUPABASE_URL authenticated routes return 401.
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      SUPABASE_JWT_SECRET: ${SUPABASE_JWT_SECRET:-}
+      SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-resumes}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    command: sh -c "alembic upgrade head && uvicorn jobai.product.api.app:create_app --factory --host 0.0.0.0 --port 8100"
+    ports:
+      - "8100:8100"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Runs queued tasks (feed refresh, resume parse) and the catalog-ingest schedule.
+  worker:
+    build: .
+    environment:
+      AIMLAPI_KEY: ${AIMLAPI_KEY:-}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-jobai}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-jobai}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      SUPABASE_STORAGE_BUCKET: ${SUPABASE_STORAGE_BUCKET:-resumes}
+      CATALOG_INGEST_INTERVAL_MIN: ${CATALOG_INGEST_INTERVAL_MIN:-360}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    command: python scripts/product/run_worker.py
+    stop_grace_period: 60s
+    depends_on:
+      api:
+        condition: service_started
+
+  web:
+    build:
+      context: frontend
+      args:
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8000}
+        NEXT_PUBLIC_PRODUCT_API_URL: ${NEXT_PUBLIC_PRODUCT_API_URL:-http://localhost:8100}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  ingest:
+    profiles: ["ingest"]
+    build: .
+    environment:
+      AIMLAPI_KEY: ${AIMLAPI_KEY:-}
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-jobai}:${POSTGRES_PASSWORD:-change-me}@db:5432/${POSTGRES_DB:-jobai}
+    command: python scripts/product/ingest_catalog.py
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

@@ -15,7 +15,7 @@ no error and no log line. Returns human-readable violations; [] means balanced.
 """
 from __future__ import annotations
 
-from src.ledger.db import Ledger
+from jobai.core.ledger.db import Ledger
 
 _CHAIN = [("dedupe", "triage"), ("triage", "match"), ("match", "write")]
 

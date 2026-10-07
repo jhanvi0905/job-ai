@@ -1,7 +1,6 @@
-import pytest
 
-from src.ledger.conservation import check_conservation
-from src.ledger.db import Ledger
+from jobai.core.ledger.conservation import check_conservation
+from jobai.core.ledger.db import Ledger
 
 
 def balanced_run(*, write=True):

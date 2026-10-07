@@ -23,10 +23,10 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-from src.ledger.conservation import check_conservation
-from src.ledger.db import Ledger
+from jobai.core.ledger.conservation import check_conservation
+from jobai.core.ledger.db import Ledger
 
 _ORDER = {"crit": 0, "warn": 1, "ok": 2}
 _GUARDRAIL_ROWS = "('budget_exceeded','circuit_open')"
@@ -49,7 +49,7 @@ def _p95(values: list[int]) -> int:
 
 
 def check(ledger: Ledger, budget: dict, now: datetime | None = None, window_hours: float = 24) -> list[Finding]:
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     since = _since(window_hours, now)
     out: list[Finding] = []
 
@@ -200,5 +200,6 @@ def _inbox_finding(ledger: Ledger, since: str) -> Finding:
     bad = by.get("no_company_match", 0) + by.get("ambiguous_match", 0)
     if bad / total > 0.5:
         return Finding("warn", "inbox", f"{bad}/{total} application emails matched no single pipeline job "
-                                          f"(no_company_match {by.get('no_company_match', 0)}, ambiguous {by.get('ambiguous_match', 0)}) — check company names / add jobs to the pipeline")
+                                          f"(no_company_match {by.get('no_company_match', 0)}, ambiguous {by.get('ambiguous_match', 0)}) "
+                                          "— check company names / add jobs to the pipeline")
     return Finding("ok", "inbox", f"{by.get('matched_updated', 0)} of {total} application emails advanced a status")

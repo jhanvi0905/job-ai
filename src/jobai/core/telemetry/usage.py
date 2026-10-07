@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from pathlib import Path
 
-from src.jobs.schemas import AIUsageRecord
+from jobai.core.paths import DATA_DIR
+from jobai.core.telemetry.records import AIUsageRecord
 
-USAGE_LOG_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "ai_usage.jsonl"
+USAGE_LOG_PATH = DATA_DIR / "ai_usage.jsonl"
 
 
 def record_usage(record: AIUsageRecord) -> None:

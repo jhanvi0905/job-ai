@@ -17,6 +17,7 @@ def configure_logging() -> None:
 class RunSummary:
     """Accumulates the PRD §36 daily-operational-summary counters."""
 
+    run_id: str | None = None
     fetched: int = 0
     duplicates: int = 0  # already in Notion (same id) or repeated within the run
     content_duplicates: int = 0  # same company+title already known (other source / re-post)

@@ -20,18 +20,30 @@ import json
 import sqlite3
 import threading
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
-from src.ledger.codes import (
-    CALL_OUTCOMES, DISPOSITIONS, EMAIL_CLASSES, EMAIL_REASONS, EMAIL_RETRYABLE, NODE_REASONS, NODES, REASON_CODES, RUN_STATUSES, VERDICT_NODES, VERDICTS, sql_in,
+from jobai.core.ledger.codes import (
+    CALL_OUTCOMES,
+    DISPOSITIONS,
+    EMAIL_CLASSES,
+    EMAIL_REASONS,
+    EMAIL_RETRYABLE,
+    NODE_REASONS,
+    NODES,
+    REASON_CODES,
+    RUN_STATUSES,
+    VERDICT_NODES,
+    VERDICTS,
+    sql_in,
 )
+from jobai.core.paths import DATA_DIR
 
-DEFAULT_LEDGER_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "ledger.db"
+DEFAULT_LEDGER_PATH = DATA_DIR / "ledger.db"
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 # Numbered migrations. Never edit an applied one; add the next number.
@@ -165,7 +177,7 @@ class Ledger:
         self._migrate()
 
     @classmethod
-    def memory(cls) -> "Ledger":
+    def memory(cls) -> Ledger:
         return cls(":memory:")
 
     def close(self) -> None:
@@ -201,7 +213,7 @@ class Ledger:
         code_version: str | None = None,
         config_signature: str | None = None,
     ) -> str:
-        run_id = f"{datetime.now(timezone.utc):%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:6]}"
+        run_id = f"{datetime.now(UTC):%Y%m%dT%H%M%S}-{uuid.uuid4().hex[:6]}"
         with self._lock:
             self._conn.execute(
                 "INSERT INTO runs (run_id, graph, started_at, status, code_version, config_signature, budget_usd)"
@@ -366,7 +378,7 @@ class Ledger:
         )
 
     def spent_today(self) -> float:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
         return self._scalar("SELECT COALESCE(SUM(cost_usd), 0) FROM llm_calls WHERE created_at >= ?", (today,))
 
     def _scalar(self, sql: str, params: tuple = ()) -> float:

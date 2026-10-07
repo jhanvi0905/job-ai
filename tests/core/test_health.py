@@ -1,14 +1,14 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-from src.ledger.db import Ledger
-from src.ledger.health import check
+from jobai.core.ledger.db import Ledger
+from jobai.core.ledger.health import check
 
 BUDGET = {"per_day_usd": 0.30}
 
 
 def add(ledger, run_id, n=1, *, outcome="ok", cost=0.0001, attempt=1, latency=500, resolved="gpt-4o-mini-2024-07-18",
         model="gpt-4o-mini", age_hours=0.0):
-    ts = (datetime.now(timezone.utc) - timedelta(hours=age_hours)).isoformat()
+    ts = (datetime.now(UTC) - timedelta(hours=age_hours)).isoformat()
     for _ in range(n):
         ledger._conn.execute(
             "INSERT INTO llm_calls (run_id,node,attempt,model_requested,model_resolved,outcome,cost_usd,latency_ms,created_at)"
@@ -118,7 +118,7 @@ def test_findings_are_sorted_worst_first():
 
 
 # ---------------------------------------------------------------- Phase 2 checks
-from tests.test_conservation import balanced_run  # noqa: E402
+from tests.core.test_conservation import balanced_run  # noqa: E402
 
 
 def ev(ledger, run, node, item, disposition, code):
@@ -189,14 +189,14 @@ def test_empty_retrieval_is_reported_as_a_retrieval_problem():
 
 def test_healthy_retrieval_and_tiny_samples_are_fine():
     ledger, run = fresh()
-    for i in range(10):
+    for _ in range(10):
         ledger.record_call(run_id=run, node="analyse_match", attempt=1, model_requested="m", outcome="ok", context={"evidence_ids": ["A01"]})
     assert by_name(check(ledger, BUDGET))["empty_evidence"].level == "ok"
 
 
 def test_a_run_that_started_and_never_finished_is_critical():
     ledger, run = fresh()
-    long_ago = (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat()
+    long_ago = (datetime.now(UTC) - timedelta(hours=5)).isoformat()
     ledger._conn.execute("UPDATE runs SET started_at=? WHERE run_id=?", (long_ago, run))
     f = by_name(check(ledger, BUDGET))["stuck_runs"]
     assert f.level == "crit" and run in f.message

@@ -9,8 +9,8 @@ system's verdicts and the human's; it never edits prompts, filters or rules.
 """
 from __future__ import annotations
 
-from src.ledger.codes import HUMAN_REJECT_REASONS
-from src.ledger.db import Ledger
+from jobai.core.ledger.codes import HUMAN_REJECT_REASONS
+from jobai.core.ledger.db import Ledger
 
 
 def sync_human_outcomes(ledger: Ledger, pages: list[dict], run_id: str | None = None) -> int:

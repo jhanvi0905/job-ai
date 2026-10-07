@@ -1,11 +1,11 @@
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from src.ledger.codes import CALL_OUTCOMES
-from src.ledger.db import MIGRATIONS, Ledger
+from jobai.core.ledger.codes import CALL_OUTCOMES
+from jobai.core.ledger.db import MIGRATIONS, Ledger
 
 
 def call(ledger, run_id, **o):
@@ -85,7 +85,7 @@ def test_spent_today_excludes_yesterday():
     ledger = Ledger.memory()
     run_id = ledger.start_run("discovery")
     call(ledger, run_id, cost_usd=0.01)
-    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    yesterday = (datetime.now(UTC) - timedelta(days=1)).isoformat()
     ledger._conn.execute(
         "INSERT INTO llm_calls (run_id,node,attempt,model_requested,outcome,cost_usd,created_at)"
         " VALUES (?,?,?,?,?,?,?)",

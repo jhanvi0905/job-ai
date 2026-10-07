@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 
-from src.ledger.db import Ledger
+from jobai.core.ledger.db import Ledger
 
 logger = logging.getLogger(__name__)
 

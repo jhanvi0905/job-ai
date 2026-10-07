@@ -2,17 +2,16 @@
 across the codebase (PRD §27)."""
 from __future__ import annotations
 
-from functools import lru_cache
-from pathlib import Path
+from functools import cache
 
 import yaml
 
-CONFIG_DIR = Path(__file__).resolve().parent.parent / "config"
+from jobai.core.paths import CONFIG_DIR, local_or_example
 
 
-@lru_cache(maxsize=None)
+@cache
 def load_yaml(name: str) -> dict:
-    path = CONFIG_DIR / name
+    path = local_or_example(CONFIG_DIR / name)
     with path.open("r", encoding="utf-8") as f:
         return yaml.safe_load(f)
 

@@ -2,9 +2,9 @@ import sqlite3
 
 import pytest
 
-from src.ledger.codes import DISPOSITIONS, NODE_REASONS, REASON_CODES
-from src.ledger.db import MIGRATIONS, Ledger
-from src.ledger.events import NULL_EVENTS, Events
+from jobai.core.ledger.codes import DISPOSITIONS, NODE_REASONS, REASON_CODES
+from jobai.core.ledger.db import MIGRATIONS, Ledger
+from jobai.core.ledger.events import NULL_EVENTS, Events
 
 
 def fresh():

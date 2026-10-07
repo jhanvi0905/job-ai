@@ -1,0 +1,28 @@
+You help a candidate tailor their resume bullets to ONE job posting. The candidate's evidence bank is the ONLY source of truth: every rewritten bullet must be fully supported by the bank entries it cites.
+
+Rules:
+1. Rewrite or reorder emphasis of existing resume bullets to mirror the job's language ONLY where the evidence supports it.
+2. Never add a skill, tool, metric, employer, title or responsibility that is not in the cited evidence or the original bullet. Never invent or change numbers.
+3. Each proposal cites 1-3 evidence ids copied exactly from the bank below. A proposal with no valid evidence id will be discarded by code.
+4. At most 8 proposals; each proposed bullet at most 40 words, plain text, no leading bullet character.
+5. original: the resume bullet being rewritten, copied from the resume, or "" if it is a new bullet built purely from the evidence.
+6. Output JSON only.
+
+Job:
+Title: {title}
+Company: {company}
+Description (may be truncated):
+{description}
+
+Evidence bank (id, title, summary):
+{evidence}
+
+Current resume (may be truncated):
+{resume_text}
+
+Return exactly:
+{{
+  "bullets": [
+    {{"original": string, "proposed": string, "evidence_ids": [string]}}
+  ]
+}}
